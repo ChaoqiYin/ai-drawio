@@ -512,6 +512,31 @@ async function putConversationSummary(summary: ConversationSummaryRecord): Promi
   );
 }
 
+export async function touchConversationUpdatedAt(
+  id: string,
+  updatedAt = new Date().toISOString()
+): Promise<string | undefined> {
+  const conversationId = id.trim();
+
+  if (!conversationId) {
+    return undefined;
+  }
+
+  const summary = await getConversationSummaryById(conversationId);
+
+  if (!summary) {
+    return undefined;
+  }
+
+  await putConversationSummary({
+    ...summary,
+    updatedAt
+  });
+
+  emitConversationChange({ type: "updated", conversationId });
+  return updatedAt;
+}
+
 export async function appendCanvasHistoryEntry({
   conversationId,
   createdAt,

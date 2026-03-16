@@ -14,6 +14,7 @@ test("conversation store exports deletion helpers", () => {
   assert.equal(typeof conversationStore.clearAllIndexedDbDatabases, "function");
   assert.equal(typeof conversationStore.findConversationByTitle, "function");
   assert.equal(typeof conversationStore.hasConversation, "function");
+  assert.equal(typeof conversationStore.touchConversationUpdatedAt, "function");
   assert.equal(typeof conversationStore.updateConversationTitle, "function");
   assert.equal(typeof conversationStore.subscribeConversationChanges, "function");
   assert.equal(typeof conversationStore.listConversationMessages, "function");

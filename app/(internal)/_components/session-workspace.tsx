@@ -33,6 +33,7 @@ import {
   appendConversationMessage,
   getConversationById,
   subscribeConversationChanges,
+  touchConversationUpdatedAt,
   updateConversationTitle,
 } from '../_lib/conversation-store';
 import { saveHomeRedirectError } from '../_lib/conversation-route-state';
@@ -504,6 +505,7 @@ export default function SessionWorkspace() {
     remoteReady: false,
   });
   const conversationRef = useRef<ConversationRecord | null>(null);
+  const autosaveSyncRef = useRef(Promise.resolve<void>(undefined));
   const frameReadyRef = useRef(false);
   const sessionIdRef = useRef('');
   const [conversation, setConversation] = useState<ConversationRecord | null>(null);
@@ -833,6 +835,42 @@ export default function SessionWorkspace() {
       setError((currentError) => currentError || nextError);
     }
 
+    function syncConversationUpdatedAt(): void {
+      const conversationId = sessionIdRef.current.trim();
+
+      if (!conversationId) {
+        return;
+      }
+
+      autosaveSyncRef.current = autosaveSyncRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          const updatedAt = await touchConversationUpdatedAt(conversationId);
+
+          if (!updatedAt) {
+            return;
+          }
+
+          setConversation((currentConversation) => {
+            if (!currentConversation || currentConversation.id !== conversationId) {
+              return currentConversation;
+            }
+
+            if (currentConversation.updatedAt.localeCompare(updatedAt) >= 0) {
+              return currentConversation;
+            }
+
+            return {
+              ...currentConversation,
+              updatedAt,
+            };
+          });
+        })
+        .catch((syncError) => {
+          setError((currentError) => currentError || toErrorMessage(syncError, '同步会话更新时间失败。'));
+        });
+    }
+
     async function readCurrentDocumentXml(): Promise<string> {
       const response = await callRemoteInvoke('aiDrawioGetDocument');
       const xml = Array.isArray(response) ? response[0] : response;
@@ -1035,6 +1073,7 @@ export default function SessionWorkspace() {
 
         bridge.documentLoaded = true;
         bridge.remoteReady = true;
+        void syncConversationUpdatedAt();
         if (bridge.browserFileReady) {
           setIsFrameReady(true);
         }
