@@ -1,8 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod cli_schema;
 mod control_protocol;
 mod control_server;
 mod document_bridge;
+mod packaged_cli;
 mod session_runtime;
 mod webview_api;
 
@@ -32,7 +34,12 @@ fn report_bridge_result(
 }
 
 fn main() {
+    if let Some(exit_code) = packaged_cli::maybe_run_from_env() {
+        std::process::exit(exit_code);
+    }
+
     tauri::Builder::default()
+        .plugin(tauri_plugin_cli::init())
         .manage(ScriptResultBridgeState::default())
         .setup(|app| {
             control_server::start_control_server(app.handle().clone())?;

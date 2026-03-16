@@ -10,6 +10,8 @@ test("session workspace redirects invalid session visits back to home", async ()
   assert.match(source, /useRouter/);
   assert.match(source, /router\.replace\('\//);
   assert.match(source, /saveHomeRedirectError/);
+  assert.match(source, /subscribeConversationChanges/);
+  assert.match(source, /persistError:\s*false/);
   assert.match(source, /未找到对应的本地会话/);
   assert.match(source, /缺少会话编号/);
 });

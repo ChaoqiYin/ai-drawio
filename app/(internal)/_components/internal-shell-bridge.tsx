@@ -4,7 +4,13 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { buildSessionHref } from "../_lib/conversation-model";
-import { createConversation, hasConversation } from "../_lib/conversation-store";
+import {
+  createConversation,
+  findConversationByTitle,
+  getConversationById,
+  hasConversation,
+  listConversations
+} from "../_lib/conversation-store";
 
 type ShellState = {
   bootstrapError: string | null;
@@ -27,7 +33,26 @@ type ShellConversationStore = {
     title: string;
     updatedAt: string;
   }>;
+  findConversationByTitle: (title: string) => Promise<{
+    href: string;
+    id: string;
+    title: string;
+  } | null>;
+  getConversation: (id: string) => Promise<{
+    canvasHistory: unknown[];
+    createdAt: string;
+    id: string;
+    messages: unknown[];
+    title: string;
+    updatedAt: string;
+  } | null>;
   hasConversation: (id: string) => Promise<boolean>;
+  listConversations: () => Promise<
+    Array<{
+      id: string;
+      title: string;
+    }>
+  >;
   openSession: (id: string) => Promise<{
     href: string;
     id: string;
@@ -85,6 +110,32 @@ export default function InternalShellBridge() {
         },
         async hasConversation(id) {
           return hasConversation(id);
+        },
+        async listConversations() {
+          const conversations = await listConversations();
+
+          return conversations.map((conversation) => ({
+            id: conversation.id,
+            title: conversation.title
+          }));
+        },
+        async findConversationByTitle(title) {
+          const conversation = await findConversationByTitle(title);
+
+          if (!conversation) {
+            return null;
+          }
+
+          return {
+            href: buildSessionHref(conversation.id),
+            id: conversation.id,
+            title: conversation.title
+          };
+        },
+        async getConversation(id) {
+          const conversation = await getConversationById(id);
+
+          return conversation ?? null;
         },
         async openSession(id) {
           const href = buildSessionHref(id);

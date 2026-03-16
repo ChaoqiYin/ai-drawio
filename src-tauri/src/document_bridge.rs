@@ -32,6 +32,68 @@ pub fn apply_document(
     session_id: &str,
     xml: &str,
     base_version: Option<&str>,
+    prompt: Option<&str>,
+    timeout: Duration,
+) -> Result<Value, ControlError> {
+    if xml.trim().is_empty() {
+        return Err(ControlError::new(
+            "DOCUMENT_INVALID",
+            "xml cannot be empty",
+        ));
+    }
+
+    let state = require_active_session(app, bridge_state, session_id, timeout)?;
+    let current_document = get_document(app, bridge_state, session_id, timeout)?;
+    let current_version = current_document
+        .get("version")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+
+    if let Some(expected_version) = base_version {
+        if !expected_version.trim().is_empty() && expected_version != current_version {
+            return Err(ControlError::new(
+                "DOCUMENT_VERSION_MISMATCH",
+                "baseVersion does not match the current document",
+            )
+            .with_details(json!({
+                "expected": current_version,
+                "received": expected_version
+            })));
+        }
+    }
+
+    let xml_json =
+        serde_json::to_string(xml).map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+    let prompt_json = serde_json::to_string(prompt.unwrap_or_default())
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+
+    let value = eval_main_window_script_with_result(
+        app,
+        bridge_state,
+        &format!(
+            r#"
+return await window.__AI_DRAWIO_SHELL__.documentBridge.applyDocument({{ prompt: {prompt_json}, xml: {xml_json} }});
+"#
+        ),
+        timeout,
+    )
+    .map_err(|error| ControlError::new("CANVAS_ACTION_FAILED", error))?;
+
+    let mut payload = build_document_payload(value, &state)?;
+    if let Some(object) = payload.as_object_mut() {
+        object.insert("previousVersion".to_string(), Value::String(current_version));
+    }
+
+    Ok(payload)
+}
+
+pub fn apply_document_without_history(
+    app: &AppHandle,
+    bridge_state: &ScriptResultBridgeState,
+    session_id: &str,
+    xml: &str,
+    base_version: Option<&str>,
     timeout: Duration,
 ) -> Result<Value, ControlError> {
     if xml.trim().is_empty() {
@@ -70,7 +132,7 @@ pub fn apply_document(
         bridge_state,
         &format!(
             r#"
-return await window.__AI_DRAWIO_SHELL__.documentBridge.applyDocument({{ xml: {xml_json} }});
+return await window.__AI_DRAWIO_SHELL__.documentBridge.applyDocumentWithoutHistory({xml_json});
 "#
         ),
         timeout,

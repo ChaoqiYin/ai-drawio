@@ -1,4 +1,5 @@
 import {
+  buildBrowserFileTitle,
   buildNextConversationTitle,
   createCanvasHistoryEntry,
   createConversationDraft,
@@ -14,6 +15,7 @@ import {
   type ConversationSummaryRecord
 } from "./conversation-model.ts";
 import {
+  buildBlankCanvasHistoryPreviewPages,
   normalizeCanvasHistoryPreviewPages,
   type CanvasHistoryPreviewPage
 } from "./canvas-history-preview.ts";
@@ -30,6 +32,9 @@ const MESSAGE_CONVERSATION_CREATED_AT_INDEX = "conversationId_createdAt";
 const CANVAS_HISTORY_CONVERSATION_INDEX = "conversationId";
 const CANVAS_HISTORY_CONVERSATION_CREATED_AT_INDEX = "conversationId_createdAt";
 const CANVAS_HISTORY_CONVERSATION_MESSAGE_INDEX = "conversationId_relatedMessageId";
+const DRAWIO_DATABASE_NAME = "database";
+const DRAWIO_FILES_STORE_NAME = "files";
+const DRAWIO_FILES_INFO_STORE_NAME = "filesInfo";
 
 export type ConversationChangeDetail = {
   conversationId?: string;
@@ -253,6 +258,62 @@ function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
+function openDrawioDatabase(): Promise<IDBDatabase | null> {
+  ensureBrowser();
+
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (typeof window.indexedDB.databases === "function") {
+        const databases = await window.indexedDB.databases();
+        const hasDrawioDatabase = databases.some((database) => database.name === DRAWIO_DATABASE_NAME);
+
+        if (!hasDrawioDatabase) {
+          resolve(null);
+          return;
+        }
+      }
+
+      const request = window.indexedDB.open("database", 2);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error("Failed to open draw.io IndexedDB."));
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+async function deleteDrawioBrowserFile(sessionId: string): Promise<void> {
+  ensureBrowser();
+
+  const title = buildBrowserFileTitle(sessionId);
+  const database = await openDrawioDatabase();
+
+  if (!database) {
+    window.localStorage.removeItem(title);
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction([DRAWIO_FILES_STORE_NAME, DRAWIO_FILES_INFO_STORE_NAME], "readwrite");
+
+    transaction.objectStore(DRAWIO_FILES_STORE_NAME).delete(title);
+    transaction.objectStore(DRAWIO_FILES_INFO_STORE_NAME).delete(title);
+    transaction.oncomplete = () => {
+      database.close();
+      window.localStorage.removeItem(title);
+      resolve();
+    };
+    transaction.onerror = () => {
+      database.close();
+      reject(transaction.error ?? new Error("Failed to delete draw.io browser file."));
+    };
+    transaction.onabort = () => {
+      database.close();
+      reject(transaction.error ?? new Error("Deleting draw.io browser file was aborted."));
+    };
+  });
+}
+
 function conversationCreatedAtRange(conversationId: string): IDBKeyRange {
   return IDBKeyRange.bound([conversationId, ""], [conversationId, "\uffff"]);
 }
@@ -277,6 +338,19 @@ async function getConversationSummaryById(
   );
 }
 
+export async function findConversationByTitle(
+  title: string
+): Promise<ConversationRecord | undefined> {
+  const normalizedTitle = title.trim();
+
+  if (!normalizedTitle) {
+    return undefined;
+  }
+
+  const conversations = await listConversations();
+  return conversations.find((conversation) => conversation.title.trim() === normalizedTitle);
+}
+
 export async function listConversationMessages(
   conversationId: string
 ): Promise<ConversationMessageRecord[]> {
@@ -291,6 +365,68 @@ export async function listConversationMessages(
       index.getAll(conversationCreatedAtRange(conversationId)) as IDBRequest<ConversationMessageRecord[]>
     );
   });
+}
+
+export async function appendConversationMessage({
+  content,
+  conversationId,
+  createdAt,
+  role
+}: {
+  content: string;
+  conversationId: string;
+  createdAt?: string;
+  role: string;
+}): Promise<ConversationMessage> {
+  if (!conversationId.trim()) {
+    throw new Error("Conversation id is required.");
+  }
+
+  const normalizedContent = content.trim();
+
+  if (!normalizedContent) {
+    throw new Error("Conversation message content cannot be empty.");
+  }
+
+  const normalizedRole = role.trim();
+
+  if (!normalizedRole) {
+    throw new Error("Conversation message role is required.");
+  }
+
+  const summary = await getConversationSummaryById(conversationId);
+
+  if (!summary) {
+    throw new Error("未找到要写入消息的本地会话。");
+  }
+
+  const nextTimestamp = createdAt ?? new Date().toISOString();
+  const message: ConversationMessage = {
+    id: `message-${globalThis.crypto?.randomUUID?.() ?? nextTimestamp.replaceAll(/[^0-9]/g, "")}`,
+    role: normalizedRole,
+    content: normalizedContent,
+    createdAt: nextTimestamp
+  };
+
+  await withStores([CONVERSATION_STORE_NAME, MESSAGE_STORE_NAME], "readwrite", async (stores) => {
+    await requestToPromise(
+      stores[MESSAGE_STORE_NAME].put(
+        createConversationMessageRecord({
+          conversationId,
+          message
+        })
+      ) as IDBRequest<IDBValidKey>
+    );
+    await requestToPromise(
+      stores[CONVERSATION_STORE_NAME].put({
+        ...summary,
+        updatedAt: nextTimestamp
+      }) as IDBRequest<IDBValidKey>
+    );
+  });
+
+  emitConversationChange({ type: "updated", conversationId });
+  return message;
 }
 
 export async function listCanvasHistoryEntries(
@@ -496,6 +632,8 @@ export async function deleteConversation(id: string): Promise<undefined> {
     }
   );
 
+  await deleteDrawioBrowserFile(id);
+
   emitConversationChange({ type: "deleted", conversationId: id });
   return undefined;
 }
@@ -536,9 +674,18 @@ export async function createConversation(title: string): Promise<ConversationRec
   );
   const draft = createConversationDraft({ now, title: nextTitle });
   const welcomeMessage = createWelcomeMessage(now);
+  const initialCanvasHistoryEntry = createCanvasHistoryEntry({
+    conversationId: draft.id,
+    createdAt: now,
+    label: "Initial Blank Canvas",
+    previewPages: buildBlankCanvasHistoryPreviewPages(),
+    relatedMessageId: welcomeMessage.id,
+    source: "ai-pre-apply",
+    xml: "<mxGraphModel><root><mxCell id=\"0\"/><mxCell id=\"1\" parent=\"0\"/></root></mxGraphModel>"
+  });
   const summary = createConversationSummaryRecord(draft);
 
-  await withStores([CONVERSATION_STORE_NAME, MESSAGE_STORE_NAME], "readwrite", async (stores) => {
+  await withStores([CONVERSATION_STORE_NAME, MESSAGE_STORE_NAME, CANVAS_HISTORY_STORE_NAME], "readwrite", async (stores) => {
     await requestToPromise(
       stores[CONVERSATION_STORE_NAME].put(summary) as IDBRequest<IDBValidKey>
     );
@@ -550,11 +697,15 @@ export async function createConversation(title: string): Promise<ConversationRec
         })
       ) as IDBRequest<IDBValidKey>
     );
+    await requestToPromise(
+      stores[CANVAS_HISTORY_STORE_NAME].put(initialCanvasHistoryEntry) as IDBRequest<IDBValidKey>
+    );
   });
 
   emitConversationChange({ type: "created", conversationId: draft.id });
   return {
     ...draft,
+    canvasHistory: [initialCanvasHistoryEntry],
     messages: [welcomeMessage]
   };
 }

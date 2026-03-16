@@ -143,3 +143,90 @@ test("buildConversationTimeline merges messages and canvas history by descending
     ]
   );
 });
+
+test("buildConversationTimeline hides linked user prompts when an AI snapshot already represents them", () => {
+  const timeline = buildConversationTimeline({
+    canvasHistory: [
+      createCanvasHistoryEntry({
+        conversationId: "conversation-1",
+        createdAt: "2026-03-16T09:10:00.000Z",
+        label: "AI Pre-Edit Snapshot",
+        previewPages: normalizeCanvasHistoryPreviewPages([
+          {
+            id: "page-1",
+            name: "Overview",
+            svgDataUri: "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="
+          }
+        ]),
+        relatedMessageId: "message-user-1",
+        source: "ai-pre-apply",
+        xml: "<before />"
+      })
+    ],
+    messages: [
+      {
+        id: "message-user-1",
+        role: "user",
+        content: "给第一页加一个方形",
+        createdAt: "2026-03-16T09:09:00.000Z"
+      },
+      {
+        id: "message-assistant-1",
+        role: "assistant",
+        content: "Applied a layout update.",
+        createdAt: "2026-03-16T09:20:00.000Z"
+      }
+    ]
+  });
+
+  assert.deepEqual(
+    timeline.map((entry) =>
+      entry.entryType === "message"
+        ? `${entry.entryType}:${entry.id}`
+        : `${entry.entryType}:${entry.relatedMessageId}`
+    ),
+    [
+      "message:message-assistant-1",
+      "canvasHistory:message-user-1"
+    ]
+  );
+});
+
+test("buildConversationTimeline hides canvas history entries that are linked to assistant messages", () => {
+  const timeline = buildConversationTimeline({
+    canvasHistory: [
+      createCanvasHistoryEntry({
+        conversationId: "conversation-1",
+        createdAt: "2026-03-16T09:10:00.000Z",
+        label: "Initial Blank Canvas",
+        previewPages: normalizeCanvasHistoryPreviewPages([
+          {
+            id: "page-1",
+            name: "Blank",
+            svgDataUri: "data:image/svg+xml;base64,PHN2Zz48L2JsYW5rLz4="
+          }
+        ]),
+        relatedMessageId: "message-assistant-welcome",
+        source: "ai-pre-apply",
+        xml: "<blank />"
+      })
+    ],
+    messages: [
+      {
+        id: "message-assistant-welcome",
+        role: "assistant",
+        content: "Start a new local AI conversation and then open the diagram workspace.",
+        createdAt: "2026-03-16T09:00:00.000Z"
+      }
+    ]
+  });
+
+  assert.deepEqual(
+    timeline.map((entry) =>
+      entry.entryType === "message"
+        ? `${entry.entryType}:${entry.id}`
+        : `${entry.entryType}:${entry.relatedMessageId}`
+    ),
+    ["message:message-assistant-welcome"]
+  );
+});

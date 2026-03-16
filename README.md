@@ -26,6 +26,8 @@ The desktop app starts on a local AI conversation history page and opens draw.io
   Runs `tauri dev`, which triggers the static frontend build before launching the desktop app.
 - `npm run build`
   Runs `tauri build`, which also rebuilds the static frontend first.
+- `npm run build:macos:pkg`
+  Builds the macOS `.app`, then wraps it in a local installer package at `src-tauri/target/release/bundle/pkg/ai-drawio-installer.pkg`.
 
 ## Frontend Routes
 
@@ -36,10 +38,30 @@ The desktop app starts on a local AI conversation history page and opens draw.io
 
 ## CLI Behavior
 
+- The packaged macOS binary is named `ai-drawio`.
+- When invoked from a terminal with a CLI command, the binary behaves like a helper:
+  - it connects to an already running desktop instance when possible
+  - otherwise it launches a detached GUI instance, waits for the local control server, then executes the command
+- Shell completion artifacts are generated into `src-tauri/target/cli-completions/` during Rust/Tauri builds.
+- The macOS installer copies the binary link to `/usr/local/bin/ai-drawio` and installs completions into:
+  - `/usr/local/share/zsh/site-functions/_ai-drawio`
+  - `/usr/local/etc/bash_completion.d/ai-drawio`
+  - `/usr/local/share/fish/vendor_completions.d/ai-drawio.fish`
+
+- `ai-drawio session list`
+  Lists all persisted local sessions and returns each session `id` and `title`.
+- `ai-drawio session open <conversation-id>`
+  Opens one persisted session by id.
+- `ai-drawio session open --title <conversation-title>`
+  Opens one persisted session by exact title.
 - `ai-drawio canvas document.get`
   Automatically ensures there is a ready session detail page before reading the document.
-- `ai-drawio canvas document.apply --xml-file <path>`
+- `ai-drawio canvas document.get --session <conversation-id>`
+  Uses a strict explicit session override.
+- `ai-drawio canvas document.apply <path>`
   Automatically ensures there is a ready session detail page before applying the document.
+- `ai-drawio canvas document.apply --xml-stdin`
+  Reads the document from stdin instead of a positional file path.
 - `--session <conversation-id>`
   Remains available as a strict override. When provided, the CLI must open and operate on that exact persisted session id, and it fails directly if the id does not exist.
 

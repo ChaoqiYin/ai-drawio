@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Alert,
@@ -31,17 +31,15 @@ import { consumeHomeRedirectError } from '../_lib/conversation-route-state';
 
 const shellClassName =
   'internal-app-shell mx-auto flex min-h-screen w-full max-w-[1480px] flex-col px-3! py-3! md:px-5! md:py-5!';
-const accentSurfaceClassName =
-  "relative overflow-hidden before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(135deg,rgba(96,165,250,0.18)_0%,rgba(14,165,233,0.08)_32%,transparent_64%),radial-gradient(circle_at_top_right,rgba(45,212,191,0.14),transparent_34%)] before:content-['']";
-const softSurfaceClassName =
-  "relative overflow-hidden before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(180deg,rgba(255,255,255,0.03)_0%,transparent_22%)] before:content-['']";
-const overlaySurfaceClassName = `${accentSurfaceClassName} bg-[linear-gradient(180deg,rgba(24,30,46,0.96)_0%,rgba(13,17,26,0.92)_100%)]`;
+const accentSurfaceClassName = 'bg-transparent';
+const softSurfaceClassName = 'bg-transparent';
+const overlaySurfaceClassName = 'bg-white/95';
 const pageCardStyle = {
-  borderRadius: 24,
+  borderRadius: 8,
   backdropFilter: 'blur(18px)',
 } as const;
 const listCardStyle = {
-  borderRadius: 20,
+  borderRadius: 8,
   cursor: 'pointer',
 } as const;
 const subtleTextStyle = { color: 'var(--color-text-3)' } as const;
@@ -57,6 +55,7 @@ function formatDate(value: string): string {
 
 export default function ConversationHome() {
   const router = useRouter();
+  const suppressNavigationUntilRef = useRef(0);
   const [isPending, startTransition] = useTransition();
   const [items, setItems] = useState<ConversationRecord[]>([]);
   const [error, setError] = useState('');
@@ -71,6 +70,14 @@ export default function ConversationHome() {
 
   const isCreatingConversation = navigationTarget === '__creating__';
   const isNavigating = Boolean(navigationTarget) || isPending;
+
+  function suppressNavigationForDelete(): void {
+    suppressNavigationUntilRef.current = Date.now() + 600;
+  }
+
+  function shouldSuppressNavigation(): boolean {
+    return Date.now() < suppressNavigationUntilRef.current;
+  }
 
   async function loadConversations(options?: { isActive?: () => boolean; keepLoading?: boolean }): Promise<void> {
     const isActive = options?.isActive ?? (() => true);
@@ -122,6 +129,10 @@ export default function ConversationHome() {
   }, []);
 
   function openConversation(conversationId: string, title: string, options?: { force?: boolean }) {
+    if (shouldSuppressNavigation()) {
+      return;
+    }
+
     if (navigationTarget && !options?.force) {
       return;
     }
@@ -151,6 +162,7 @@ export default function ConversationHome() {
 
   async function handleDeleteConversation(conversationId: string) {
     setError('');
+    suppressNavigationForDelete();
 
     setDeletingId(conversationId);
 
@@ -239,16 +251,11 @@ export default function ConversationHome() {
           <Card className={`internal-panel ${accentSurfaceClassName}`} style={pageCardStyle}>
             <Space direction="vertical" size={14} style={{ width: '100%', alignItems: 'stretch' }}>
               <Space size={10} align="center" wrap>
-                <Tag color="arcoblue">本地 AI 历史记录</Tag>
                 <Tag color="green">{isLoading ? '正在加载本地历史' : `共 ${items.length} 条会话`}</Tag>
               </Space>
-              <Title heading={3} className="internal-gradient-text" style={{ margin: 0 }}>
-                先选择一条已保存的 AI 会话，再进入画布工作区。
+              <Title heading={3} style={{ margin: 0 }}>
+                选择历史会话开启工作区
               </Title>
-              <Paragraph style={{ ...subtleTextStyle, marginBottom: 0 }}>
-                当前桌面壳会将 AI 会话历史仅保存在浏览器 IndexedDB 中。你可以选择已有记录，
-                或创建一条新的本地会话，然后进入嵌入式 draw.io 工作区继续操作。
-              </Paragraph>
               <Space wrap>
                 <Button
                   type="primary"
@@ -307,13 +314,19 @@ export default function ConversationHome() {
                             loading: deletingId === item.id,
                           }}
                           okText={deletingId === item.id ? '删除中...' : '确认删除'}
-                          onOk={() => handleDeleteConversation(item.id)}
+                          onOk={() => {
+                            suppressNavigationForDelete();
+                            return handleDeleteConversation(item.id);
+                          }}
                         >
                           <Button
                             size="mini"
                             status="danger"
                             icon={<IconDelete />}
-                            onClick={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              suppressNavigationForDelete();
+                            }}
                             disabled={isClearingAll || isNavigating || deletingId === item.id}
                           >
                             删除
@@ -343,7 +356,7 @@ export default function ConversationHome() {
       </Content>
       {navigationTarget ? (
         <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(4,8,12,0.52)] px-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(255,255,255,0.68)] px-4 backdrop-blur-sm"
           data-navigation-overlay="true"
         >
           <Card
@@ -352,7 +365,7 @@ export default function ConversationHome() {
           >
             <Space direction="vertical" size={10} style={{ width: '100%', alignItems: 'stretch' }}>
               <Tag color="arcoblue">会话跳转中</Tag>
-              <Title heading={5} className="internal-gradient-text" style={{ margin: 0 }}>
+              <Title heading={5} style={{ margin: 0 }}>
                 正在进入画布工作区
               </Title>
               <Paragraph style={{ ...subtleTextStyle, marginBottom: 0 }}>

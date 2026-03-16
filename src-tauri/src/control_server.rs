@@ -97,14 +97,56 @@ fn handle_request(app: &AppHandle, request: ControlRequest) -> ControlResponse {
             }
         },
         CommandKind::SessionOpen => {
-            let session_id = request
-                .require_session_id()
-                .map_err(|error| error)
+            let title = request
+                .payload
+                .get("title")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
                 .map(str::to_string);
 
-            session_id.and_then(|session_id| {
-                session_runtime::open_session(app, &bridge_state, &session_id, timeout)
+            if let Some(title) = title {
+                session_runtime::open_session_by_title(app, &bridge_state, &title, timeout)
                     .map(|state| json!(state))
+            } else {
+                let session_id = request
+                    .require_session_id()
+                    .map_err(|error| error)
+                    .map(str::to_string);
+
+                session_id.and_then(|session_id| {
+                    session_runtime::open_session(app, &bridge_state, &session_id, timeout)
+                        .map(|state| json!(state))
+                })
+            }
+        }
+        CommandKind::SessionGet => {
+            let title = request
+                .payload
+                .get("title")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+
+            if let Some(title) = title {
+                session_runtime::get_conversation_by_title(app, &bridge_state, &title, timeout)
+            } else {
+                let session_id = request
+                    .require_session_id()
+                    .map_err(|error| error)
+                    .map(str::to_string);
+
+                session_id.and_then(|session_id| {
+                    session_runtime::get_conversation(app, &bridge_state, &session_id, timeout)
+                })
+            }
+        }
+        CommandKind::SessionList => {
+            session_runtime::list_sessions(app, &bridge_state, timeout).map(|sessions| {
+                json!({
+                    "sessions": sessions
+                })
             })
         }
         CommandKind::CanvasDocumentGet => {
@@ -133,9 +175,43 @@ fn handle_request(app: &AppHandle, request: ControlRequest) -> ControlResponse {
                 .get("baseVersion")
                 .and_then(Value::as_str)
                 .map(str::to_string);
+            let prompt = request
+                .payload
+                .get("prompt")
+                .and_then(Value::as_str)
+                .map(str::to_string);
 
             session_id.and_then(|session_id| {
                 document_bridge::apply_document(
+                    app,
+                    &bridge_state,
+                    &session_id,
+                    &xml,
+                    base_version.as_deref(),
+                    prompt.as_deref(),
+                    timeout,
+                )
+            })
+        }
+        CommandKind::CanvasDocumentRestore => {
+            let session_id = request
+                .require_session_id()
+                .map_err(|error| error)
+                .map(str::to_string);
+            let xml = request
+                .payload
+                .get("xml")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let base_version = request
+                .payload
+                .get("baseVersion")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+
+            session_id.and_then(|session_id| {
+                document_bridge::apply_document_without_history(
                     app,
                     &bridge_state,
                     &session_id,

@@ -27,6 +27,13 @@ pub struct ShellState {
     pub session_id: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionListEntry {
+    pub id: String,
+    pub title: String,
+}
+
 pub fn build_session_route(session_id: &str) -> String {
     format!("/session?id={session_id}")
 }
@@ -141,6 +148,152 @@ return await window.__AI_DRAWIO_SHELL__?.conversationStore?.hasConversation?.({s
         "APP_NOT_READY",
         "timed out while waiting for the conversation existence bridge",
     ))
+}
+
+fn find_conversation_by_title(
+    app: &AppHandle,
+    bridge_state: &ScriptResultBridgeState,
+    title: &str,
+    timeout: Duration,
+) -> Result<Option<String>, ControlError> {
+    let started_at = Instant::now();
+    let poll_interval = Duration::from_millis(200);
+    let title_json = serde_json::to_string(title)
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+
+    while started_at.elapsed() < timeout {
+        let value = eval_main_window_script_with_result(
+            app,
+            bridge_state,
+            &format!(
+                r#"
+return await window.__AI_DRAWIO_SHELL__?.conversationStore?.findConversationByTitle?.({title_json}) ?? null;
+"#
+            ),
+            Duration::from_secs(2),
+        )
+        .map_err(|error| ControlError::new("APP_NOT_READY", error));
+
+        match value {
+            Ok(Value::Object(result)) => {
+                let session_id = result
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
+
+                return Ok(session_id);
+            }
+            Ok(Value::Null) => return Ok(None),
+            Ok(_) | Err(_) => thread::sleep(poll_interval),
+        }
+    }
+
+    Err(ControlError::new(
+        "APP_NOT_READY",
+        "timed out while waiting for the conversation title lookup bridge",
+    ))
+}
+
+pub fn list_sessions(
+    app: &AppHandle,
+    bridge_state: &ScriptResultBridgeState,
+    timeout: Duration,
+) -> Result<Vec<SessionListEntry>, ControlError> {
+    focus_main_window(app)?;
+
+    let started_at = Instant::now();
+    let poll_interval = Duration::from_millis(200);
+
+    while started_at.elapsed() < timeout {
+        let value = eval_main_window_script_with_result(
+            app,
+            bridge_state,
+            r#"
+return await window.__AI_DRAWIO_SHELL__?.conversationStore?.listConversations?.() ?? null;
+"#,
+            Duration::from_secs(2),
+        )
+        .map_err(|error| ControlError::new("APP_NOT_READY", error));
+
+        match value {
+            Ok(value @ Value::Array(_)) => {
+                return serde_json::from_value(value)
+                    .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()));
+            }
+            Ok(_) | Err(_) => thread::sleep(poll_interval),
+        }
+    }
+
+    Err(ControlError::new(
+        "APP_NOT_READY",
+        "timed out while waiting for the conversation list bridge",
+    ))
+}
+
+pub fn get_conversation(
+    app: &AppHandle,
+    bridge_state: &ScriptResultBridgeState,
+    session_id: &str,
+    timeout: Duration,
+) -> Result<Value, ControlError> {
+    focus_main_window(app)?;
+
+    let started_at = Instant::now();
+    let poll_interval = Duration::from_millis(200);
+    let session_id_json = serde_json::to_string(session_id)
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+
+    while started_at.elapsed() < timeout {
+        let value = eval_main_window_script_with_result(
+            app,
+            bridge_state,
+            &format!(
+                r#"
+return await window.__AI_DRAWIO_SHELL__?.conversationStore?.getConversation?.({session_id_json}) ?? null;
+"#
+            ),
+            Duration::from_secs(2),
+        )
+        .map_err(|error| ControlError::new("APP_NOT_READY", error));
+
+        match value {
+            Ok(value) if !value.is_null() => return Ok(value),
+            Ok(_) | Err(_) => thread::sleep(poll_interval),
+        }
+    }
+
+    Err(ControlError::new(
+        "APP_NOT_READY",
+        "timed out while waiting for the conversation get bridge",
+    ))
+}
+
+pub fn get_conversation_by_title(
+    app: &AppHandle,
+    bridge_state: &ScriptResultBridgeState,
+    title: &str,
+    timeout: Duration,
+) -> Result<Value, ControlError> {
+    let normalized_title = title.trim();
+
+    if normalized_title.is_empty() {
+        return Err(ControlError::new(
+            "VALIDATION_FAILED",
+            "session title cannot be empty",
+        ));
+    }
+
+    let session_id = find_conversation_by_title(app, bridge_state, normalized_title, timeout)?
+        .ok_or_else(|| {
+            ControlError::new(
+                "SESSION_NOT_FOUND",
+                format!("session with title '{normalized_title}' was not found in local storage"),
+            )
+        })?;
+
+    get_conversation(app, bridge_state, &session_id, timeout)
 }
 
 fn navigate_to_session(
@@ -264,6 +417,34 @@ pub fn open_session(
     navigate_to_session(app, bridge_state, session_id, timeout)?;
 
     wait_for_session_ready(app, bridge_state, session_id, timeout)
+}
+
+pub fn open_session_by_title(
+    app: &AppHandle,
+    bridge_state: &ScriptResultBridgeState,
+    title: &str,
+    timeout: Duration,
+) -> Result<ShellState, ControlError> {
+    focus_main_window(app)?;
+
+    let normalized_title = title.trim();
+
+    if normalized_title.is_empty() {
+        return Err(ControlError::new(
+            "VALIDATION_FAILED",
+            "session title cannot be empty",
+        ));
+    }
+
+    let session_id = find_conversation_by_title(app, bridge_state, normalized_title, timeout)?
+        .ok_or_else(|| {
+            ControlError::new(
+                "SESSION_NOT_FOUND",
+                format!("session with title '{normalized_title}' was not found in local storage"),
+            )
+        })?;
+
+    open_session(app, bridge_state, &session_id, timeout)
 }
 
 pub fn require_active_session(

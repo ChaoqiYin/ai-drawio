@@ -79,3 +79,4 @@ public/drawio/
 
 # Local git worktrees
 .worktrees/
+.superpowers/

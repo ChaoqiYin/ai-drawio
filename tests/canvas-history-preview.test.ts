@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { normalizeCanvasHistoryPreviewPages } from "../app/(internal)/_lib/canvas-history-preview.ts";
+import {
+  buildBlankCanvasHistoryPreviewPages,
+  normalizeCanvasHistoryPreviewPages
+} from "../app/(internal)/_lib/canvas-history-preview.ts";
 
 test("normalizeCanvasHistoryPreviewPages keeps valid preview pages and fills fallback names", () => {
   const pages = normalizeCanvasHistoryPreviewPages([
@@ -38,4 +41,13 @@ test("normalizeCanvasHistoryPreviewPages rejects invalid preview payloads", () =
       ]),
     /preview/i,
   );
+});
+
+test("buildBlankCanvasHistoryPreviewPages returns a restorable empty-canvas preview", () => {
+  const pages = buildBlankCanvasHistoryPreviewPages();
+
+  assert.equal(pages.length, 1);
+  assert.equal(pages[0].id, "page-1");
+  assert.equal(pages[0].name, "Blank Canvas");
+  assert.match(pages[0].svgDataUri, /^data:image\/svg\+xml/);
 });

@@ -22,35 +22,50 @@ test("session workspace uses a strict desktop flex shell structure", async () =>
   assert.match(source, /data-layout="workspace-body"/);
   assert.match(source, /data-layout="workspace-sidebar"/);
   assert.match(source, /data-layout="workspace-main"/);
-  assert.match(source, /data-layout="workspace-main-toolbar"/);
   assert.match(source, /data-layout="workspace-main-canvas"/);
   assert.match(source, /internal-app-shell/);
   assert.match(source, /toolbarSurfaceClassName/);
   assert.match(source, /sidebarSurfaceClassName/);
+  assert.match(source, /const toolbarCardStyle = \{[\s\S]*borderRadius: 8,/);
   assert.match(source, /flex flex-col h-full min-h-full p-\[18px\] lg:p-\[22px\]/);
-  assert.match(source, /mb-\[18px\][^"]*lg:mb-\[22px\]/);
+  assert.match(source, /<Header className="mb-\[14px\]! h-auto bg-transparent p-0" data-layout="workspace-head">/);
   assert.match(source, /flex min-h-0 flex-1 flex-col gap-\[14px\] lg:gap-4/);
-  assert.match(source, /min-h-0 flex min-w-0 flex-1 flex-col gap-4 lg:gap-\[18px\]/);
-  assert.match(source, /before:left-\[45%\][^"]*before:bg-\[radial-gradient\(circle,rgba\(59,130,246,0\.16\)_0%,transparent_72%\)\]/);
-  assert.match(source, /rounded-\[24px\][^"]*bg-\[linear-gradient\(145deg,rgba\(96,165,250,0\.24\)_0%,rgba\(45,212,191,0\.18\)_42%,rgba\(15,23,42,0\.08\)_100%\)\]/);
+  assert.match(source, /min-h-0 flex min-w-0 flex-1 flex-col gap-4 lg:gap-\[18px\] bg-transparent!/);
+  assert.match(source, /rounded-\[8px\][^"]*border border-\[rgba\(148,163,184,0\.2\)\]/);
   assert.match(source, /width=\{320\}/);
-  assert.match(source, /theme="dark"/);
+  assert.match(source, /theme="light"/);
   assert.match(
     source,
     /<Content[\s\S]*style=\{\{ display: ['"]flex['"], flexDirection: ['"]column['"], minWidth: 0, minHeight: 0 \}\}[\s\S]*data-layout="workspace-main"/
   );
-  assert.match(source, /paddingTop: 14/);
-  assert.match(source, /paddingInline: 18/);
+  assert.match(
+    source,
+    /<Content[\s\S]*data-layout="workspace-main"[\s\S]*>\s*<div className=\{workspaceCanvasClassName\} data-layout="workspace-main-canvas">/
+  );
   assert.match(source, /width: ['"]100%['"],[\s\S]*height: ['"]100%['"]/);
-  assert.match(source, /bodyStyle=\{\{ padding: 0, height: ['"]100%['"], display: ['"]flex['"] \}\}/);
   assert.match(source, /display: ['"]block['"]/);
   assert.match(source, /width: ['"]100%['"]/);
   assert.match(source, /height: ['"]100%['"]/);
+  assert.doesNotMatch(source, /canvasCardStyle/);
+  assert.doesNotMatch(source, /bodyStyle=\{\{ padding: 0, height: ['"]100%['"], display: ['"]flex['"] \}\}/);
   assert.doesNotMatch(source, /internal-workspace-shell/);
   assert.doesNotMatch(source, /internal-workspace-toolbar-card/);
   assert.doesNotMatch(source, /internal-workspace-sidebar-card/);
   assert.doesNotMatch(source, /internal-workspace-main-toolbar/);
   assert.doesNotMatch(source, /internal-workspace-canvas-frame/);
+  assert.doesNotMatch(source, /internal-gradient-text/);
+  assert.doesNotMatch(source, /linear-gradient/);
+  assert.doesNotMatch(source, /radial-gradient/);
+  assert.doesNotMatch(source, /data-layout="workspace-main-toolbar"/);
+  assert.doesNotMatch(source, /嵌入式画布工作区/);
+  assert.doesNotMatch(source, /draw\.io 画布/);
+  assert.doesNotMatch(source, /当前会话已加载/);
+  assert.doesNotMatch(source, /等待会话加载/);
+  assert.doesNotMatch(source, /mb-4!/);
+  assert.doesNotMatch(source, /mb-\[18px\][^"]*lg:mb-\[22px\]/);
+  assert.doesNotMatch(source, /borderRadius: 20,/);
+  assert.doesNotMatch(source, /rounded-\[24px\]/);
+  assert.doesNotMatch(source, /theme="dark"/);
   assert.doesNotMatch(source, /extra=\{conversation \? <Text type="secondary">\{conversation\.id\}<\/Text> : null\}/);
   assert.doesNotMatch(source, /<Text type="secondary" style=\{\{ maxWidth: 420, textAlign: 'right', wordBreak: 'break-all' \}\}>\s*\{DRAWIO_EMBED_PATH\}\s*<\/Text>/);
   assert.doesNotMatch(

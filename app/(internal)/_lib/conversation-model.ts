@@ -171,18 +171,38 @@ export function buildConversationTimeline(conversation: {
   canvasHistory?: CanvasHistoryEntry[];
   messages?: ConversationMessage[];
 }): ConversationTimelineEntry[] {
+  const assistantMessageIds = new Set(
+    (conversation.messages ?? [])
+      .filter((message) => message.role === "assistant")
+      .map((message) => message.id)
+  );
+  const linkedUserMessageIds = new Set(
+    (conversation.canvasHistory ?? [])
+      .filter((entry) => entry.source === "ai-pre-apply" && Boolean(entry.relatedMessageId))
+      .map((entry) => entry.relatedMessageId)
+  );
+
   return [
-    ...(conversation.messages ?? []).map((message) => ({
+    ...(conversation.messages ?? [])
+      .filter((message) => !(message.role === "user" && linkedUserMessageIds.has(message.id)))
+      .map((message) => ({
       ...message,
       entryType: "message" as const
-    })),
-    ...(conversation.canvasHistory ?? []).map((entry) => ({
-      ...entry,
-      entryType: "canvasHistory" as const
-    }))
+      })),
+    ...(conversation.canvasHistory ?? [])
+      .filter((entry) => !(entry.relatedMessageId && assistantMessageIds.has(entry.relatedMessageId)))
+      .map((entry) => ({
+        ...entry,
+        entryType: "canvasHistory" as const
+      }))
   ].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
 export function buildSessionHref(id: string): string {
   return `/session?id=${encodeURIComponent(id)}`;
+}
+
+export function buildBrowserFileTitle(sessionId: string): string {
+  const normalizedSessionId = sessionId.trim().replace(/[^a-zA-Z0-9_-]+/g, "-");
+  return `${normalizedSessionId || "local-session"}.drawio`;
 }

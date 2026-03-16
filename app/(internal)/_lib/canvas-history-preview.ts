@@ -4,8 +4,21 @@ export interface CanvasHistoryPreviewPage {
   svgDataUri: string;
 }
 
+const BLANK_CANVAS_SVG =
+  "<svg xmlns='http://www.w3.org/2000/svg' width='640' height='360' viewBox='0 0 640 360'><rect width='640' height='360' fill='#f8fafc'/><rect x='64' y='48' width='512' height='264' rx='24' fill='#ffffff' stroke='#cbd5e1' stroke-width='2' stroke-dasharray='10 10'/><text x='320' y='184' text-anchor='middle' font-family='Arial, sans-serif' font-size='24' fill='#94a3b8'>Blank Canvas</text></svg>";
+
 function isSvgDataUri(value: string): boolean {
   return value.startsWith("data:image/svg+xml");
+}
+
+export function buildBlankCanvasHistoryPreviewPages(): CanvasHistoryPreviewPage[] {
+  return [
+    {
+      id: "page-1",
+      name: "Blank Canvas",
+      svgDataUri: `data:image/svg+xml;utf8,${encodeURIComponent(BLANK_CANVAS_SVG)}`
+    }
+  ];
 }
 
 export function normalizeCanvasHistoryPreviewPages(input: unknown): CanvasHistoryPreviewPage[] {

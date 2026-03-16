@@ -14,6 +14,8 @@ export interface ParsedCommand {
   outputFile: string | null;
   payload: {
     baseVersion?: string | null;
+    prompt?: string | null;
+    title?: string | null;
     xmlFile?: string | null;
     xmlFromStdin?: boolean;
   };
@@ -25,6 +27,8 @@ export interface ControlEnvelope {
   payload: {
     xml?: string;
     baseVersion?: string;
+    prompt?: string;
+    title?: string;
   };
   requestId: string;
   sessionId: string | null;
@@ -37,6 +41,9 @@ export interface ControlEnvelope {
 
 export interface SessionResolutionCommand {
   command: "session.ensure" | "session.open";
+  payload: {
+    title?: string;
+  };
   sessionId: string | null;
 }
 
@@ -130,11 +137,60 @@ export function parseCliArgs(argv: string[]): ParsedCommand {
 
   if (root === "session") {
     const action = args.shift();
+    if (action === "list") {
+      if (args.length > 0) {
+        fail(`未知参数: ${args.join(" ")}`);
+      }
+
+      return {
+        command: "session.list",
+        outputFile: null,
+        payload: {},
+        sessionId: null
+      };
+    }
+
+    if (action === "get") {
+      const sessionId = takeFlag(args, "--id");
+      const title = takeFlag(args, "--title");
+
+      if (sessionId && title) {
+        fail("session.get 不能同时使用 --id 和 --title");
+      }
+
+      if (!sessionId && !title) {
+        fail("session.get 需要 --id 或 --title");
+      }
+
+      if (args.length > 0) {
+        fail(`未知参数: ${args.join(" ")}`);
+      }
+
+      return {
+        command: "session.get",
+        outputFile: null,
+        payload: {
+          title: title || null
+        },
+        sessionId
+      };
+    }
+
     if (action !== "open") {
-      fail("session 仅支持 open");
+      fail("session 仅支持 open、get 或 list");
     }
 
     const sessionId = takeFlag(args, "--id");
+    const title = takeFlag(args, "--title");
+
+    if (sessionId && title) {
+      fail("session.open 不能同时使用 --id 和 --title");
+    }
+
+    if (!sessionId && !title) {
+      fail("session.open 需要 --id 或 --title");
+    }
+
     if (args.length > 0) {
       fail(`未知参数: ${args.join(" ")}`);
     }
@@ -142,7 +198,9 @@ export function parseCliArgs(argv: string[]): ParsedCommand {
     return {
       command: "session.open",
       outputFile: null,
-      payload: {},
+      payload: {
+        title: title || null
+      },
       sessionId
     };
   }
@@ -150,7 +208,12 @@ export function parseCliArgs(argv: string[]): ParsedCommand {
   if (root === "canvas") {
     const subcommand = args.shift();
     const sessionId = takeFlag(args, "--session");
+    const sessionTitle = takeFlag(args, "--session-title");
     const outputFile = takeFlag(args, "--output-file");
+
+    if (sessionId && sessionTitle) {
+      fail("canvas 命令不能同时使用 --session 和 --session-title");
+    }
 
     if (subcommand === "document.get") {
       if (args.length > 0) {
@@ -160,7 +223,9 @@ export function parseCliArgs(argv: string[]): ParsedCommand {
       return {
         command: "canvas.document.get",
         outputFile,
-        payload: {},
+        payload: {
+          title: sessionTitle || null
+        },
         sessionId
       };
     }
@@ -169,6 +234,7 @@ export function parseCliArgs(argv: string[]): ParsedCommand {
       const xmlFile = takeFlag(args, "--xml-file");
       const xmlFromStdin = takeBooleanFlag(args, "--xml-stdin");
       const baseVersion = takeFlag(args, "--base-version");
+      const prompt = takeFlag(args, "--prompt");
 
       if (!xmlFile && !xmlFromStdin) {
         fail("document.apply 需要 --xml-file 或 --xml-stdin");
@@ -187,6 +253,38 @@ export function parseCliArgs(argv: string[]): ParsedCommand {
         outputFile,
         payload: {
           baseVersion: baseVersion || null,
+          prompt: prompt || null,
+          title: sessionTitle || null,
+          xmlFile,
+          xmlFromStdin
+        },
+        sessionId
+      };
+    }
+
+    if (subcommand === "document.restore") {
+      const xmlFile = takeFlag(args, "--xml-file");
+      const xmlFromStdin = takeBooleanFlag(args, "--xml-stdin");
+      const baseVersion = takeFlag(args, "--base-version");
+
+      if (!xmlFile && !xmlFromStdin) {
+        fail("document.restore 需要 --xml-file 或 --xml-stdin");
+      }
+
+      if (xmlFile && xmlFromStdin) {
+        fail("document.restore 不能同时使用 --xml-file 和 --xml-stdin");
+      }
+
+      if (args.length > 0) {
+        fail(`未知参数: ${args.join(" ")}`);
+      }
+
+      return {
+        command: "canvas.document.restore",
+        outputFile,
+        payload: {
+          baseVersion: baseVersion || null,
+          title: sessionTitle || null,
           xmlFile,
           xmlFromStdin
         },
@@ -212,7 +310,10 @@ export async function buildControlEnvelope(
 ): Promise<ControlEnvelope> {
   let payload: ControlEnvelope["payload"] = {};
 
-  if (parsedCommand.command === "canvas.document.apply") {
+  if (
+    parsedCommand.command === "canvas.document.apply" ||
+    parsedCommand.command === "canvas.document.restore"
+  ) {
     const xml = parsedCommand.payload.xmlFile
       ? await fs.readFile(parsedCommand.payload.xmlFile, "utf8")
       : await readStdin();
@@ -224,6 +325,14 @@ export async function buildControlEnvelope(
     if (parsedCommand.payload.baseVersion) {
       payload.baseVersion = parsedCommand.payload.baseVersion;
     }
+
+    if (parsedCommand.payload.prompt) {
+      payload.prompt = parsedCommand.payload.prompt;
+    }
+  }
+
+  if (parsedCommand.command === "session.open" && parsedCommand.payload.title) {
+    payload.title = parsedCommand.payload.title;
   }
 
   return buildBaseEnvelope(parsedCommand.command, parsedCommand.sessionId, payload);
@@ -234,7 +343,8 @@ export function getSessionResolutionCommand(
 ): SessionResolutionCommand {
   if (
     parsedCommand.command !== "canvas.document.get" &&
-    parsedCommand.command !== "canvas.document.apply"
+    parsedCommand.command !== "canvas.document.apply" &&
+    parsedCommand.command !== "canvas.document.restore"
   ) {
     fail(`命令 ${parsedCommand.command} 不需要会话解析`);
   }
@@ -242,12 +352,24 @@ export function getSessionResolutionCommand(
   if (parsedCommand.sessionId) {
     return {
       command: "session.open",
+      payload: {},
       sessionId: parsedCommand.sessionId
+    };
+  }
+
+  if (parsedCommand.payload.title) {
+    return {
+      command: "session.open",
+      payload: {
+        title: parsedCommand.payload.title
+      },
+      sessionId: null
     };
   }
 
   return {
     command: "session.ensure",
+    payload: {},
     sessionId: null
   };
 }
@@ -370,7 +492,9 @@ export async function executeCli(argv: string[]): Promise<Record<string, any>> {
 
   if (
     parsedCommand.command === "open" ||
-    parsedCommand.command === "conversation.create"
+    parsedCommand.command === "conversation.create" ||
+    parsedCommand.command === "session.get" ||
+    parsedCommand.command === "session.list"
   ) {
     const launched = await ensureDesktopApp();
     const response = await requestControl(await buildControlEnvelope(parsedCommand));
@@ -385,12 +509,13 @@ export async function executeCli(argv: string[]): Promise<Record<string, any>> {
 
   if (
     parsedCommand.command === "canvas.document.get" ||
-    parsedCommand.command === "canvas.document.apply"
+    parsedCommand.command === "canvas.document.apply" ||
+    parsedCommand.command === "canvas.document.restore"
   ) {
     const launched = await ensureDesktopApp();
     const resolution = getSessionResolutionCommand(parsedCommand);
     const resolutionResponse = await requestControl(
-      buildBaseEnvelope(resolution.command, resolution.sessionId)
+      buildBaseEnvelope(resolution.command, resolution.sessionId, resolution.payload)
     );
 
     if (!resolutionResponse.ok) {

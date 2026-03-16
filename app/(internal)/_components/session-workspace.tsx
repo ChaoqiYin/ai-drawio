@@ -1,18 +1,40 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Alert, Button, Card, Empty, Input, Layout, Modal, Space, Tabs, Tag, Typography } from '@arco-design/web-react';
+import {
+  Alert,
+  Breadcrumb,
+  Button,
+  Card,
+  Empty,
+  Input,
+  Layout,
+  Modal,
+  Space,
+  Tabs,
+  Tag,
+  Typography,
+} from '@arco-design/web-react';
 import { IconEdit, IconLeft } from '@arco-design/web-react/icon';
 
 import {
+  buildBrowserFileTitle,
   buildConversationTimeline,
   type CanvasHistoryEntry,
   type CanvasHistorySource,
+  type ConversationMessage,
   type ConversationRecord,
 } from '../_lib/conversation-model';
 import { normalizeCanvasHistoryPreviewPages, type CanvasHistoryPreviewPage } from '../_lib/canvas-history-preview';
-import { appendCanvasHistoryEntry, getConversationById, updateConversationTitle } from '../_lib/conversation-store';
+import {
+  appendCanvasHistoryEntry,
+  appendConversationMessage,
+  getConversationById,
+  subscribeConversationChanges,
+  updateConversationTitle,
+} from '../_lib/conversation-store';
 import { saveHomeRedirectError } from '../_lib/conversation-route-state';
 
 const DRAWIO_EMBED_PATH = '/drawio/index.html?embed=1&proto=json&spin=1&noSaveBtn=1&noExitBtn=1&saveAndExit=0';
@@ -20,33 +42,31 @@ const DRAWIO_EMBED_PATH = '/drawio/index.html?embed=1&proto=json&spin=1&noSaveBt
 const FALLBACK_EMPTY_DIAGRAM_XML =
   '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel>';
 
-const shellClassName =
-  "internal-app-shell h-screen overflow-hidden before:pointer-events-none before:absolute before:left-[45%] before:top-0 before:z-[-1] before:h-[340px] before:w-[340px] before:rounded-full before:bg-[radial-gradient(circle,rgba(59,130,246,0.16)_0%,transparent_72%)] before:blur-[24px] before:content-['']";
+const shellClassName = 'internal-app-shell h-screen overflow-hidden';
 const pageShellClassName = 'flex flex-col h-full min-h-full p-[18px] lg:p-[22px]';
 const shellBodyClassName = 'min-h-0 flex flex-1 gap-4 bg-transparent!';
 const sidebarClassName = 'h-full overflow-hidden bg-transparent!';
-const workspaceClassName = 'min-h-0 flex min-w-0 flex-1 flex-col gap-4 lg:gap-[18px]';
-const toolbarSurfaceClassName =
-  "relative overflow-hidden before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(135deg,rgba(96,165,250,0.18)_0%,rgba(14,165,233,0.08)_32%,transparent_64%),radial-gradient(circle_at_top_right,rgba(45,212,191,0.14),transparent_34%)] before:content-['']";
-const sidebarSurfaceClassName =
-  "relative overflow-hidden before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(180deg,rgba(255,255,255,0.03)_0%,transparent_22%)] before:content-['']";
+const workspaceClassName = 'min-h-0 flex min-w-0 flex-1 flex-col gap-4 lg:gap-[18px] bg-transparent!';
+const topNavSurfaceClassName = 'bg-transparent';
+const toolbarSurfaceClassName = 'bg-transparent';
+const sidebarSurfaceClassName = 'bg-transparent';
 const workspaceCanvasClassName =
-  "relative min-h-0 flex flex-1 overflow-hidden rounded-[24px] bg-[linear-gradient(145deg,rgba(96,165,250,0.24)_0%,rgba(45,212,191,0.18)_42%,rgba(15,23,42,0.08)_100%)] shadow-[0_26px_72px_rgba(2,6,23,0.36)] before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(180deg,rgba(255,255,255,0.06)_0%,transparent_18%)] before:content-['']";
+  'relative min-h-0 flex flex-1 overflow-hidden rounded-[8px] border border-[rgba(148,163,184,0.2)] bg-white/95 shadow-[0_20px_52px_rgba(15,23,42,0.08)]';
 const toolbarCardStyle = {
-  borderRadius: 20,
+  borderRadius: 8,
   backdropFilter: 'blur(18px)',
 } as const;
-const canvasCardStyle = {
-  borderRadius: 23,
-  width: '100%',
-  height: '100%',
-} as const;
 const { Header, Content, Sider } = Layout;
-const { Paragraph, Text, Title } = Typography;
+const { Paragraph, Text } = Typography;
 
 type PendingRequest = {
   reject: (reason?: unknown) => void;
   resolve: (value: unknown) => void;
+};
+
+type BreadcrumbRoute = {
+  path: string;
+  breadcrumbName: string;
 };
 
 type BridgeState = {
@@ -84,10 +104,7 @@ type EditorUiInstance = {
 
 type EditorUiPrototype = {
   aiDrawioApplyDocument?: (this: EditorUiInstance, xml: string) => string;
-  aiDrawioBuildSvgPreviewPages?: (
-    this: EditorUiInstance,
-    xml: string,
-  ) => { pages: CanvasHistoryPreviewPage[] };
+  aiDrawioBuildSvgPreviewPages?: (this: EditorUiInstance, xml: string) => { pages: CanvasHistoryPreviewPage[] };
   aiDrawioEnsureBrowserFile?: (
     this: EditorUiInstance,
     title: string,
@@ -150,14 +167,20 @@ type ShellWindow = Window &
         applyDocument: ({
           historyLabel,
           historySource,
+          prompt,
           relatedMessageId,
           xml,
         }: {
           historyLabel?: string;
           historySource?: CanvasHistorySource;
+          prompt?: string;
           relatedMessageId?: string | null;
           xml: string;
         }) => Promise<{
+          appliedAt: string;
+          xml: string;
+        }>;
+        applyDocumentWithoutHistory: (xml: string) => Promise<{
           appliedAt: string;
           xml: string;
         }>;
@@ -210,11 +233,6 @@ function getEmptyDiagramXml(frameWindow: DrawioFrameWindow | null | undefined): 
   return frameWindow?.EditorUi?.prototype?.emptyDiagramXml || FALLBACK_EMPTY_DIAGRAM_XML;
 }
 
-function buildBrowserFileTitle(sessionId: string): string {
-  const normalizedSessionId = sessionId.trim().replace(/[^a-zA-Z0-9_-]+/g, '-');
-  return `${normalizedSessionId || 'local-session'}.drawio`;
-}
-
 function toErrorMessage(error: unknown, fallbackMessage: string): string {
   if (error instanceof Error) {
     return error.message;
@@ -232,7 +250,82 @@ function buildCanvasHistoryDescription(entry: CanvasHistoryEntry): string {
     return '恢复前快照';
   }
 
-  return 'AI 修改前快照';
+  return '快照';
+}
+
+function findUserPromptForCanvasHistory(entry: CanvasHistoryEntry, messages: ConversationMessage[]): string {
+  const orderedMessages = [...messages].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+
+  const findNearestUserMessage = (startIndex: number): string => {
+    for (let index = startIndex; index >= 0; index -= 1) {
+      const message = orderedMessages[index];
+
+      if (message.role !== 'user') {
+        continue;
+      }
+
+      const content = message.content.trim();
+
+      if (content) {
+        return content;
+      }
+    }
+
+    return '';
+  };
+
+  if (entry.relatedMessageId) {
+    const relatedIndex = orderedMessages.findIndex((message) => message.id === entry.relatedMessageId);
+
+    if (relatedIndex >= 0) {
+      const relatedContent = findNearestUserMessage(relatedIndex);
+
+      if (relatedContent) {
+        return relatedContent;
+      }
+    }
+  }
+
+  const entryAnchorIndex = orderedMessages.findIndex((message) => message.createdAt > entry.createdAt);
+  const fallbackStartIndex = entryAnchorIndex >= 0 ? entryAnchorIndex - 1 : orderedMessages.length - 1;
+  const fallbackContent = findNearestUserMessage(fallbackStartIndex);
+
+  if (fallbackContent) {
+    return fallbackContent;
+  }
+
+  return entry.label.trim() || buildCanvasHistoryDescription(entry);
+}
+
+function buildTimelineEntryHeading(entry: ReturnType<typeof buildConversationTimeline>[number]): string {
+  if (entry.entryType === 'message') {
+    return entry.role;
+  }
+
+  return entry.source === 'restore-pre-apply' ? '恢复快照' : 'assistant';
+}
+
+function buildTimelineEntryBody(
+  entry: ReturnType<typeof buildConversationTimeline>[number],
+  messages: ConversationMessage[],
+): string {
+  if (entry.entryType === 'message') {
+    return entry.content;
+  }
+
+  if (entry.source !== 'restore-pre-apply') {
+    return findUserPromptForCanvasHistory(entry, messages);
+  }
+
+  const baseLabel = entry.label.trim() || buildCanvasHistoryDescription(entry);
+  return `恢复前快照：${baseLabel}`;
+}
+
+function findCanvasHistoryEntryForMessage(
+  message: ConversationMessage,
+  canvasHistory: CanvasHistoryEntry[],
+): CanvasHistoryEntry | null {
+  return canvasHistory.find((entry) => entry.relatedMessageId === message.id) || null;
 }
 
 function installDocumentRemoteInvokes(frameWindow: DrawioFrameWindow | null | undefined): void {
@@ -429,10 +522,28 @@ export default function SessionWorkspace() {
   const [isRouteRedirecting, setIsRouteRedirecting] = useState(false);
 
   const sessionId = searchParams.get('id');
+  const breadcrumbRoutes = [
+    { path: '/', breadcrumbName: '历史记录' },
+    { path: sessionId || '', breadcrumbName: conversation?.title || '未命名会话' },
+  ] satisfies BreadcrumbRoute[];
 
   conversationRef.current = conversation;
   frameReadyRef.current = isFrameReady;
   sessionIdRef.current = sessionId || '';
+
+  function resetEmbeddedDocumentState(): void {
+    const bridge = bridgeRef.current;
+    bridge.bootstrapStarted = false;
+    bridge.bootstrapError = '';
+    bridge.bootstrappingBrowserFile = false;
+    bridge.browserFileReady = false;
+    bridge.browserFileTitle = '';
+    bridge.documentLoaded = false;
+    bridge.lastDocumentXml = '';
+    bridge.lastEvent = 'session-change';
+    bridge.remoteReady = false;
+    setIsFrameReady(false);
+  }
 
   async function reloadConversationState(targetSessionId = sessionIdRef.current): Promise<ConversationRecord | null> {
     const nextSessionId = targetSessionId.trim();
@@ -459,7 +570,7 @@ export default function SessionWorkspace() {
   useEffect(() => {
     let cancelled = false;
 
-    function redirectHome(message: string): void {
+    function redirectHome(message: string, options?: { persistError?: boolean }): void {
       if (cancelled) {
         return;
       }
@@ -467,7 +578,9 @@ export default function SessionWorkspace() {
       setConversation(null);
       setError(message);
       setIsRouteRedirecting(true);
-      saveHomeRedirectError(message);
+      if (options?.persistError !== false) {
+        saveHomeRedirectError(message);
+      }
       router.replace('/');
     }
 
@@ -497,11 +610,23 @@ export default function SessionWorkspace() {
     }
 
     loadConversation();
+    const unsubscribe = subscribeConversationChanges((detail) => {
+      if (cancelled || detail.type !== 'deleted' || detail.conversationId !== sessionId) {
+        return;
+      }
+
+      redirectHome('', { persistError: false });
+    });
 
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, [router, sessionId]);
+
+  useEffect(() => {
+    resetEmbeddedDocumentState();
+  }, [sessionId]);
 
   function openRenameDialog(): void {
     if (!conversation) {
@@ -512,6 +637,30 @@ export default function SessionWorkspace() {
     setRenameError('');
     setRenameDialogOpen(true);
   }
+
+  const handleNavigateBack = (): void => {
+    router.push('/');
+  };
+
+  const renderBreadcrumbItem = (route: BreadcrumbRoute, routes: BreadcrumbRoute[]): ReactNode => {
+    const isLastRoute = routes.indexOf(route) === routes.length - 1;
+
+    if (isLastRoute) {
+      return <span>{route.breadcrumbName}</span>;
+    }
+
+    return (
+      <button
+        type="button"
+        className="cursor-pointer border-0 bg-transparent p-0 text-inherit"
+        onClick={() => {
+          router.push('/');
+        }}
+      >
+        {route.breadcrumbName}
+      </button>
+    );
+  };
 
   function closeRenameDialog(options?: { force?: boolean }): void {
     if (isRenaming && !options?.force) {
@@ -593,11 +742,7 @@ export default function SessionWorkspace() {
     setRestoringHistoryId(entry.id);
 
     try {
-      await documentBridge.applyDocument({
-        historyLabel: '恢复前快照',
-        historySource: 'restore-pre-apply',
-        xml: entry.xml,
-      });
+      await documentBridge.applyDocumentWithoutHistory(entry.xml);
       await reloadConversationState();
       return true;
     } catch (restoreError) {
@@ -708,13 +853,15 @@ export default function SessionWorkspace() {
     }
 
     async function applyDocumentWithHistory({
-      historyLabel = 'AI 修改前快照',
+      historyLabel = '快照',
       historySource = 'ai-pre-apply',
+      prompt = '',
       relatedMessageId = null,
       xml,
     }: {
       historyLabel?: string;
       historySource?: CanvasHistorySource;
+      prompt?: string;
       relatedMessageId?: string | null;
       xml: string;
     }): Promise<{ appliedAt: string; xml: string }> {
@@ -723,21 +870,16 @@ export default function SessionWorkspace() {
       }
 
       const conversationId = sessionIdRef.current.trim();
+      const normalizedPrompt = prompt.trim();
+      let userMessage: ConversationMessage | null = null;
 
       if (conversationId) {
         try {
-          const currentXml = await readCurrentDocumentXml();
-
-          if (currentXml.trim().length > 0 && currentXml !== xml) {
-            const previewPages = await buildSvgPreviewPagesForHistory(currentXml);
-
-            await appendCanvasHistoryEntry({
+          if (historySource === 'ai-pre-apply' && normalizedPrompt) {
+            userMessage = await appendConversationMessage({
+              content: normalizedPrompt,
               conversationId,
-              label: historyLabel,
-              previewPages,
-              relatedMessageId,
-              source: historySource,
-              xml: currentXml,
+              role: 'user',
             });
           }
         } catch (snapshotError) {
@@ -745,6 +887,37 @@ export default function SessionWorkspace() {
           setError(message);
           throw new Error(message);
         }
+      }
+
+      const appliedDocument = await applyDocumentWithoutHistory(xml);
+
+      if (conversationId) {
+        try {
+          const previewPages = await buildSvgPreviewPagesForHistory(appliedDocument.xml);
+
+          await appendCanvasHistoryEntry({
+            conversationId,
+            label: historyLabel,
+            previewPages,
+            relatedMessageId: userMessage?.id || relatedMessageId,
+            source: historySource,
+            xml: appliedDocument.xml,
+          });
+        } catch (snapshotError) {
+          const message = toErrorMessage(snapshotError, '记录画布历史失败。');
+          setError(message);
+          throw new Error(message);
+        }
+      }
+
+      void reloadConversationState(conversationId);
+
+      return appliedDocument;
+    }
+
+    async function applyDocumentWithoutHistory(xml: string): Promise<{ appliedAt: string; xml: string }> {
+      if (typeof xml !== 'string' || xml.trim().length === 0) {
+        throw new Error('xml cannot be empty');
       }
 
       const response = await callRemoteInvoke('aiDrawioApplyDocument', [xml]);
@@ -755,7 +928,6 @@ export default function SessionWorkspace() {
       }
 
       bridge.lastDocumentXml = nextXml;
-      void reloadConversationState(conversationId);
 
       return {
         appliedAt: new Date().toISOString(),
@@ -896,13 +1068,18 @@ export default function SessionWorkspace() {
     shellWindow.__AI_DRAWIO_SHELL__ = {
       ...(shellWindow.__AI_DRAWIO_SHELL__ || {}),
       documentBridge: {
-        async applyDocument({ historyLabel, historySource, relatedMessageId, xml }) {
+        async applyDocument({ historyLabel, historySource, prompt, relatedMessageId, xml }) {
           return applyDocumentWithHistory({
             historyLabel,
             historySource,
+            prompt,
             relatedMessageId,
             xml,
           });
+        },
+
+        async applyDocumentWithoutHistory(xml) {
+          return applyDocumentWithoutHistory(xml);
         },
 
         async getDocument() {
@@ -968,10 +1145,9 @@ export default function SessionWorkspace() {
 
   const timelineEntries = conversation ? buildConversationTimeline(conversation) : [];
   const hasRestorePreview = restorePreviewPages.length > 0;
-  const activeRestorePreviewPage =
-    hasRestorePreview
-      ? restorePreviewPages.find((page) => page.id === restorePreviewActivePageId) || restorePreviewPages[0] || null
-      : null;
+  const activeRestorePreviewPage = hasRestorePreview
+    ? restorePreviewPages.find((page) => page.id === restorePreviewActivePageId) || restorePreviewPages[0] || null
+    : null;
 
   if (isRouteRedirecting) {
     return null;
@@ -980,25 +1156,30 @@ export default function SessionWorkspace() {
   return (
     <Layout className={shellClassName}>
       <div className={pageShellClassName}>
-        <Header className="mb-[18px]! lg:mb-[22px]! h-auto bg-transparent p-0" data-layout="workspace-head">
-          <Card
-            className={`internal-panel ${toolbarSurfaceClassName}`}
-            style={toolbarCardStyle}
-            bodyStyle={{ padding: 20 }}
-          >
-            <div className="flex items-start justify-between gap-5">
-              <Space direction="vertical" size={6}>
-                <Tag color="arcoblue">会话工作区</Tag>
-                <Title heading={4} className="internal-gradient-text" style={{ margin: 0 }}>
-                  {conversation?.title || '请先加载一条本地会话，再打开 draw.io。'}
-                </Title>
-              </Space>
-              <Space wrap>
+        <Header className="mb-[14px]! h-auto bg-transparent p-0" data-layout="workspace-head">
+          <Space direction="vertical" size={14} style={{ display: 'flex' }}>
+            <Card
+              className={`internal-panel ${topNavSurfaceClassName}`}
+              style={toolbarCardStyle}
+              bodyStyle={{ padding: '8px 10px' }}
+              data-layout="workspace-top-nav"
+            >
+              <div className="flex items-center gap-4">
+                <Button type="primary" size="mini" icon={<IconLeft />} onClick={handleNavigateBack}>
+                  返回
+                </Button>
+                <Breadcrumb
+                  data-layout="workspace-breadcrumb"
+                  routes={breadcrumbRoutes}
+                  itemRender={renderBreadcrumbItem}
+                />
+              </div>
+            </Card>
+
+            <div className="flex items-center justify-end gap-3" data-layout="workspace-status-bar">
+              <Space size={8}>
                 <Button icon={<IconEdit />} onClick={openRenameDialog} disabled={!conversation || isRenaming}>
                   重命名
-                </Button>
-                <Button href="/" icon={<IconLeft />}>
-                  返回历史记录
                 </Button>
                 {conversation ? <Tag color="green">更新时间 {formatDate(conversation.updatedAt)}</Tag> : null}
                 <Tag color={isFrameReady ? 'green' : 'gold'}>
@@ -1006,11 +1187,11 @@ export default function SessionWorkspace() {
                 </Tag>
               </Space>
             </div>
-          </Card>
+          </Space>
         </Header>
 
         <Layout hasSider className={shellBodyClassName} data-layout="workspace-body">
-          <Sider width={320} theme="dark" trigger={null} className={sidebarClassName} data-layout="workspace-sidebar">
+          <Sider width={320} theme="light" trigger={null} className={sidebarClassName} data-layout="workspace-sidebar">
             <Card
               className={`internal-panel overflow-hidden ${sidebarSurfaceClassName}`}
               title="会话记录"
@@ -1035,29 +1216,42 @@ export default function SessionWorkspace() {
                     <Space direction="vertical" size={10} style={{ display: 'flex' }}>
                       {timelineEntries.map((entry) =>
                         entry.entryType === 'message' ? (
-                          <Card className="internal-message-card" key={entry.id}>
-                            <Space direction="vertical" size={6} style={{ width: '100%', alignItems: 'stretch' }}>
-                              <div className="flex items-center justify-between gap-3">
-                                <Tag color="purple">{entry.role}</Tag>
-                                <Text type="secondary">{formatDate(entry.createdAt)}</Text>
-                              </div>
-                              <Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>{entry.content}</Paragraph>
-                            </Space>
-                          </Card>
+                          (() => {
+                            const linkedCanvasHistoryEntry = findCanvasHistoryEntryForMessage(
+                              entry,
+                              conversation?.canvasHistory ?? [],
+                            );
+
+                            return (
+                              <Card className="internal-message-card" key={entry.id}>
+                                <Space direction="vertical" size={6} style={{ width: '100%', alignItems: 'stretch' }}>
+                                  <Text style={{ fontWeight: 600 }}>{buildTimelineEntryHeading(entry)}</Text>
+                                  <Text type="secondary">{formatDate(entry.createdAt)}</Text>
+                                  <Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
+                                    {buildTimelineEntryBody(entry, conversation?.messages ?? [])}
+                                  </Paragraph>
+                                  {entry.role === 'assistant' && linkedCanvasHistoryEntry ? (
+                                    <Button
+                                      size="small"
+                                      type="primary"
+                                      disabled={!isFrameReady || Boolean(restoringHistoryId)}
+                                      loading={restoringHistoryId === linkedCanvasHistoryEntry.id}
+                                      onClick={() => void openRestorePreview(linkedCanvasHistoryEntry)}
+                                    >
+                                      恢复到此版本
+                                    </Button>
+                                  ) : null}
+                                </Space>
+                              </Card>
+                            );
+                          })()
                         ) : (
                           <Card className="internal-message-card" key={entry.id}>
                             <Space direction="vertical" size={8} style={{ width: '100%', alignItems: 'stretch' }}>
-                              <div className="flex items-center justify-between gap-3">
-                                <Space size={6}>
-                                  <Tag color="cyan">画布历史</Tag>
-                                  <Tag color={entry.source === 'restore-pre-apply' ? 'orange' : 'arcoblue'}>
-                                    {buildCanvasHistoryDescription(entry)}
-                                  </Tag>
-                                </Space>
-                                <Text type="secondary">{formatDate(entry.createdAt)}</Text>
-                              </div>
-                              <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                                {entry.label || 'AI 修改前快照'}
+                              <Text style={{ fontWeight: 600 }}>{buildTimelineEntryHeading(entry)}</Text>
+                              <Text type="secondary">{formatDate(entry.createdAt)}</Text>
+                              <Paragraph type="secondary" style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
+                                {buildTimelineEntryBody(entry, conversation?.messages ?? [])}
                               </Paragraph>
                               <Button
                                 size="small"
@@ -1089,58 +1283,25 @@ export default function SessionWorkspace() {
             style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}
             data-layout="workspace-main"
           >
-            <Card
-              className={`internal-panel ${toolbarSurfaceClassName}`}
-              style={toolbarCardStyle}
-              bodyStyle={{ paddingTop: 14, paddingBottom: 14, paddingInline: 18 }}
-              data-layout="workspace-main-toolbar"
-            >
-              <div className="flex items-center justify-between gap-5">
-                <Space direction="vertical" size={4}>
-                  <Text type="secondary">draw.io 画布</Text>
-                  <Title heading={6} style={{ margin: 0 }}>
-                    嵌入式画布工作区
-                  </Title>
-                </Space>
-                <Space wrap align="center">
-                  <Tag color={conversation ? 'green' : 'gold'}>{conversation ? '当前会话已加载' : '等待会话加载'}</Tag>
-                </Space>
-              </div>
-            </Card>
-
             <div className={workspaceCanvasClassName} data-layout="workspace-main-canvas">
-              {/* bodyStyle={{ padding: 0, height: '100%', display: 'flex' }} */}
-              <Card
-                className="internal-panel overflow-hidden"
-                style={canvasCardStyle}
-                bodyStyle={{ padding: 0, height: '100%', display: 'flex', overflow: 'hidden' }}
-              >
-                {conversation ? (
-                  <iframe
-                    ref={iframeRef}
-                    className="h-full w-full flex-1 border-0 bg-[#0b1117]"
-                    style={{ display: 'block', width: '100%', height: '100%' }}
-                    src={DRAWIO_EMBED_PATH}
-                    title="嵌入式 draw.io 工作区"
-                    onLoad={() => {
-                      const bridge = bridgeRef.current;
-                      bridge.bootstrapStarted = false;
-                      bridge.bootstrapError = '';
-                      bridge.bootstrappingBrowserFile = false;
-                      bridge.browserFileReady = false;
-                      bridge.browserFileTitle = '';
-                      bridge.documentLoaded = false;
-                      bridge.lastEvent = 'iframe-load';
-                      bridge.remoteReady = false;
-                      setIsFrameReady(false);
-                    }}
-                  />
-                ) : (
-                  <div className="flex min-h-full w-full items-center justify-center">
-                    <Empty description="正在校验本地会话记录..." />
-                  </div>
-                )}
-              </Card>
+              {conversation ? (
+                <iframe
+                  key={sessionId || 'empty-session'}
+                  ref={iframeRef}
+                  className="h-full w-full flex-1 border-0 bg-white"
+                  style={{ display: 'block', width: '100%', height: '100%' }}
+                  src={DRAWIO_EMBED_PATH}
+                  title="嵌入式 draw.io 工作区"
+                  onLoad={() => {
+                    resetEmbeddedDocumentState();
+                    bridgeRef.current.lastEvent = 'iframe-load';
+                  }}
+                />
+              ) : (
+                <div className="flex min-h-full w-full items-center justify-center">
+                  <Empty description="正在校验本地会话记录..." />
+                </div>
+              )}
             </div>
           </Content>
         </Layout>
@@ -1148,6 +1309,7 @@ export default function SessionWorkspace() {
       <Modal
         title="预览后恢复"
         visible={restorePreviewDialogOpen}
+        style={{ width: '70vw', maxWidth: '70vw' }}
         onOk={() => void confirmRestorePreview()}
         onCancel={() => closeRestorePreview()}
         okText={restoringHistoryId === restorePreviewEntry?.id ? '恢复中...' : '确认恢复'}
@@ -1160,17 +1322,17 @@ export default function SessionWorkspace() {
       >
         <Space direction="vertical" size={14} style={{ width: '100%', alignItems: 'stretch' }}>
           {restorePreviewEntry ? (
-            <Space size={8} wrap>
-              <Tag color={restorePreviewEntry.source === 'restore-pre-apply' ? 'orange' : 'arcoblue'}>
-                {buildCanvasHistoryDescription(restorePreviewEntry)}
-              </Tag>
-              <Tag color="green">{restorePreviewEntry.label || 'AI 修改前快照'}</Tag>
-              <Tag color="gold">{formatDate(restorePreviewEntry.createdAt)}</Tag>
-            </Space>
+            <div className="flex items-center justify-between gap-3">
+              <Tag>{buildCanvasHistoryDescription(restorePreviewEntry)}</Tag>
+              <Tag color="green">{formatDate(restorePreviewEntry.createdAt)}</Tag>
+            </div>
           ) : null}
 
           {hasRestorePreview ? (
-            <Tabs activeTab={restorePreviewActivePageId} onChange={(value) => setRestorePreviewActivePageId(String(value))}>
+            <Tabs
+              activeTab={restorePreviewActivePageId}
+              onChange={(value) => setRestorePreviewActivePageId(String(value))}
+            >
               {restorePreviewPages.map((page) => (
                 <Tabs.TabPane key={page.id} title={page.name} />
               ))}
@@ -1179,12 +1341,12 @@ export default function SessionWorkspace() {
 
           {restorePreviewError ? <Alert type="error" content={restorePreviewError} showIcon /> : null}
 
-          <div className="flex min-h-[320px] items-center justify-center overflow-hidden rounded-[18px] border border-[rgba(148,163,184,0.18)] bg-[linear-gradient(180deg,rgba(15,23,42,0.72)_0%,rgba(15,23,42,0.52)_100%)] p-4">
+          <div className="flex min-h-[320px] items-center justify-center overflow-hidden rounded-[8px] bg-white p-4">
             {activeRestorePreviewPage ? (
               <img
                 src={activeRestorePreviewPage.svgDataUri}
                 alt={`${activeRestorePreviewPage.name} SVG 预览`}
-                className="max-h-[60vh] max-w-full rounded-[12px] bg-white object-contain shadow-[0_18px_36px_rgba(15,23,42,0.38)]"
+                className="max-h-[60vh] max-w-full bg-white object-contain"
               />
             ) : (
               <Empty description="暂无缓存预览" />

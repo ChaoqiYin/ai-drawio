@@ -12,8 +12,13 @@ test("session workspace clips sidebar history and iframe content within rounded 
 
   assert.match(source, /className=\{`internal-panel overflow-hidden \$\{sidebarSurfaceClassName\}`\}/);
   assert.match(source, /min-h-0 flex-1 overflow-y-auto pr-1/);
-  assert.match(source, /className="internal-panel overflow-hidden"/);
-  assert.match(
+  assert.match(source, /const workspaceCanvasClassName =/);
+  assert.match(source, /workspaceCanvasClassName[\s\S]*overflow-hidden/);
+  assert.doesNotMatch(
+    source,
+    /data-layout="workspace-main-canvas"[\s\S]*className="internal-panel overflow-hidden"/
+  );
+  assert.doesNotMatch(
     source,
     /bodyStyle=\{\{ padding: 0, height: ['"]100%['"], display: ['"]flex['"], overflow: ['"]hidden['"] \}\}/
   );

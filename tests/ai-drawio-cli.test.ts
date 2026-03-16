@@ -15,6 +15,34 @@ test("parseCliArgs parses session open", () => {
   assert.equal(parsed.sessionId, "sess-1");
 });
 
+test("parseCliArgs parses session open by title", () => {
+  const parsed = parseCliArgs(["session", "open", "--title", "本地绘画 2"]);
+
+  assert.equal(parsed.command, "session.open");
+  assert.equal(parsed.sessionId, null);
+  assert.equal(parsed.payload.title, "本地绘画 2");
+});
+
+test("parseCliArgs parses session list", () => {
+  const parsed = parseCliArgs(["session", "list"]);
+
+  assert.equal(parsed.command, "session.list");
+  assert.equal(parsed.sessionId, null);
+  assert.equal(parsed.outputFile, null);
+  assert.deepEqual(parsed.payload, {});
+});
+
+test("parseCliArgs parses session get", () => {
+  const parsed = parseCliArgs(["session", "get", "--id", "sess-1"]);
+
+  assert.equal(parsed.command, "session.get");
+  assert.equal(parsed.sessionId, "sess-1");
+  assert.equal(parsed.outputFile, null);
+  assert.deepEqual(parsed.payload, {
+    title: null
+  });
+});
+
 test("parseCliArgs parses conversation create", () => {
   const parsed = parseCliArgs(["conversation", "create"]);
 
@@ -64,6 +92,57 @@ test("parseCliArgs parses canvas document apply with xml file", () => {
   assert.equal(parsed.payload.baseVersion, "sha256:abc");
 });
 
+test("parseCliArgs parses canvas document apply with prompt metadata", () => {
+  const parsed = parseCliArgs([
+    "canvas",
+    "document.apply",
+    "--session",
+    "sess-4",
+    "--xml-file",
+    "./next.xml",
+    "--prompt",
+    "给第一页加一个 Hello World"
+  ]);
+
+  assert.equal(parsed.command, "canvas.document.apply");
+  assert.equal(parsed.sessionId, "sess-4");
+  assert.equal(parsed.payload.xmlFile, "./next.xml");
+  assert.equal(parsed.payload.prompt, "给第一页加一个 Hello World");
+});
+
+test("parseCliArgs parses canvas document apply with session title", () => {
+  const parsed = parseCliArgs([
+    "canvas",
+    "document.apply",
+    "--session-title",
+    "本地绘画 2",
+    "--xml-file",
+    "./next.xml"
+  ]);
+
+  assert.equal(parsed.command, "canvas.document.apply");
+  assert.equal(parsed.sessionId, null);
+  assert.equal(parsed.payload.title, "本地绘画 2");
+});
+
+test("parseCliArgs parses canvas document restore with base version", () => {
+  const parsed = parseCliArgs([
+    "canvas",
+    "document.restore",
+    "--session",
+    "sess-5",
+    "--xml-file",
+    "./restore.xml",
+    "--base-version",
+    "sha256:restore"
+  ]);
+
+  assert.equal(parsed.command, "canvas.document.restore");
+  assert.equal(parsed.sessionId, "sess-5");
+  assert.equal(parsed.payload.xmlFile, "./restore.xml");
+  assert.equal(parsed.payload.baseVersion, "sha256:restore");
+});
+
 test("parseCliArgs allows canvas document apply without session id", () => {
   const parsed = parseCliArgs([
     "canvas",
@@ -86,6 +165,7 @@ test("getSessionResolutionCommand uses session.ensure when session id is omitted
 
   assert.deepEqual(resolution, {
     command: "session.ensure",
+    payload: {},
     sessionId: null
   });
 });
@@ -96,7 +176,21 @@ test("getSessionResolutionCommand uses session.open when a session id is provide
 
   assert.deepEqual(resolution, {
     command: "session.open",
+    payload: {},
     sessionId: "sess-9"
+  });
+});
+
+test("getSessionResolutionCommand uses session.open with title when a session title is provided", () => {
+  const parsed = parseCliArgs(["canvas", "document.get", "--session-title", "本地绘画 2"]);
+  const resolution = getSessionResolutionCommand(parsed);
+
+  assert.deepEqual(resolution, {
+    command: "session.open",
+    payload: {
+      title: "本地绘画 2"
+    },
+    sessionId: null
   });
 });
 

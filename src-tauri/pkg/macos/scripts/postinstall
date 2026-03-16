@@ -1,0 +1,41 @@
+#!/bin/sh
+
+set -eu
+
+APP_PATH="/Applications/AI Drawio.app"
+BIN_SOURCE="$APP_PATH/Contents/MacOS/ai-drawio"
+COMPLETION_SOURCE_DIR="$APP_PATH/Contents/SharedSupport/cli-completions"
+BIN_TARGET="/usr/local/bin/ai-drawio"
+ZSH_TARGET_DIR="/usr/local/share/zsh/site-functions"
+BASH_TARGET_DIR="/usr/local/etc/bash_completion.d"
+FISH_TARGET_DIR="/usr/local/share/fish/vendor_completions.d"
+
+if [ ! -x "$BIN_SOURCE" ]; then
+  echo "Installed CLI binary was not found at $BIN_SOURCE" >&2
+  exit 1
+fi
+
+mkdir -p /usr/local/bin
+mkdir -p "$ZSH_TARGET_DIR"
+mkdir -p "$BASH_TARGET_DIR"
+mkdir -p "$FISH_TARGET_DIR"
+
+ln -sf "$BIN_SOURCE" "$BIN_TARGET"
+
+if [ -f "$COMPLETION_SOURCE_DIR/_ai-drawio" ]; then
+  install -m 0644 "$COMPLETION_SOURCE_DIR/_ai-drawio" "$ZSH_TARGET_DIR/_ai-drawio"
+fi
+
+if [ -f "$COMPLETION_SOURCE_DIR/ai-drawio.bash" ]; then
+  install -m 0644 \
+    "$COMPLETION_SOURCE_DIR/ai-drawio.bash" \
+    "$BASH_TARGET_DIR/ai-drawio"
+fi
+
+if [ -f "$COMPLETION_SOURCE_DIR/ai-drawio.fish" ]; then
+  install -m 0644 \
+    "$COMPLETION_SOURCE_DIR/ai-drawio.fish" \
+    "$FISH_TARGET_DIR/ai-drawio.fish"
+fi
+
+exit 0

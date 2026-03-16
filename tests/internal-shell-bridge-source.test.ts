@@ -12,7 +12,11 @@ test("internal shell bridge exposes shared session orchestration helpers", async
 
   assert.match(source, /useRouter/);
   assert.match(source, /createConversation/);
+  assert.match(source, /findConversationByTitle/);
+  assert.match(source, /getConversationById/);
+  assert.match(source, /getConversation/);
   assert.match(source, /hasConversation/);
+  assert.match(source, /listConversations/);
   assert.match(source, /openSession/);
   assert.match(source, /router\.push/);
   assert.match(source, /conversationStore/);

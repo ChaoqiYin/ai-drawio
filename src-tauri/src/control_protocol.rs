@@ -8,10 +8,13 @@ pub enum CommandKind {
     ConversationCreate,
     Open,
     SessionEnsure,
+    SessionGet,
+    SessionList,
     SessionOpen,
     Status,
     CanvasDocumentApply,
     CanvasDocumentGet,
+    CanvasDocumentRestore,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -38,7 +41,7 @@ pub struct ControlRequest {
     pub timeout_ms: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ControlResponse {
     pub command: String,
@@ -49,7 +52,7 @@ pub struct ControlResponse {
     pub session_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ControlError {
     pub code: String,
@@ -63,9 +66,12 @@ impl ControlRequest {
         match self.command.trim() {
             "canvas.document.apply" => Ok(CommandKind::CanvasDocumentApply),
             "canvas.document.get" => Ok(CommandKind::CanvasDocumentGet),
+            "canvas.document.restore" => Ok(CommandKind::CanvasDocumentRestore),
             "conversation.create" => Ok(CommandKind::ConversationCreate),
             "open" => Ok(CommandKind::Open),
             "session.ensure" => Ok(CommandKind::SessionEnsure),
+            "session.get" => Ok(CommandKind::SessionGet),
+            "session.list" => Ok(CommandKind::SessionList),
             "session.open" => Ok(CommandKind::SessionOpen),
             "status" => Ok(CommandKind::Status),
             _ => Err(ControlError::new(
@@ -125,13 +131,56 @@ impl ControlRequest {
                         "payload.xml cannot be empty",
                     ));
                 }
+
+                if let Some(prompt) = self.payload.get("prompt") {
+                    let prompt = prompt.as_str().map(str::trim).ok_or_else(|| {
+                        ControlError::new("VALIDATION_FAILED", "payload.prompt must be a string")
+                    })?;
+
+                    if prompt.is_empty() {
+                        return Err(ControlError::new(
+                            "VALIDATION_FAILED",
+                            "payload.prompt cannot be empty",
+                        ));
+                    }
+                }
             }
-            CommandKind::CanvasDocumentGet | CommandKind::SessionOpen => {
+            CommandKind::CanvasDocumentRestore => {
                 self.require_session_id()?;
+
+                let xml = self
+                    .payload
+                    .get("xml")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| {
+                        ControlError::new("DOCUMENT_INVALID", "payload.xml cannot be empty")
+                    })?;
+
+                if xml.is_empty() {
+                    return Err(ControlError::new(
+                        "DOCUMENT_INVALID",
+                        "payload.xml cannot be empty",
+                    ));
+                }
+            }
+            CommandKind::CanvasDocumentGet | CommandKind::SessionGet | CommandKind::SessionOpen => {
+                let has_title = self
+                    .payload
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty());
+
+                if !has_title {
+                    self.require_session_id()?;
+                }
             }
             CommandKind::ConversationCreate
             | CommandKind::Open
             | CommandKind::SessionEnsure
+            | CommandKind::SessionList
             | CommandKind::Status => {}
         }
 
@@ -243,6 +292,19 @@ mod tests {
     }
 
     #[test]
+    fn validates_document_restore_requests() {
+        let mut request = base_request("canvas.document.restore");
+        request.session_id = Some("sess-1".to_string());
+        request.payload = json!({
+            "xml": "<mxGraphModel />"
+        });
+
+        let command = request.validate().expect("request should validate");
+
+        assert_eq!(command, CommandKind::CanvasDocumentRestore);
+    }
+
+    #[test]
     fn uses_the_default_timeout() {
         let request = base_request("status");
         assert_eq!(request.timeout_ms, DEFAULT_TIMEOUT_MS);
@@ -264,5 +326,24 @@ mod tests {
         let command = request.validate().expect("request should validate");
 
         assert_eq!(command, CommandKind::SessionEnsure);
+    }
+
+    #[test]
+    fn validates_session_list_requests() {
+        let request = base_request("session.list");
+
+        let command = request.validate().expect("request should validate");
+
+        assert_eq!(command, CommandKind::SessionList);
+    }
+
+    #[test]
+    fn validates_session_get_requests() {
+        let mut request = base_request("session.get");
+        request.session_id = Some("sess-1".to_string());
+
+        let command = request.validate().expect("request should validate");
+
+        assert_eq!(command, CommandKind::SessionGet);
     }
 }

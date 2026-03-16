@@ -7,26 +7,25 @@ const SOURCE_PATH = new URL(
   import.meta.url
 );
 
-test("session workspace saves a snapshot before applying a new AI document", async () => {
+test("session workspace saves a result snapshot after applying a new AI document", async () => {
   const source = await readFile(SOURCE_PATH, "utf8");
 
   assert.match(source, /buildSvgPreviewPagesForHistory/);
   assert.match(source, /const previewPages = await buildSvgPreviewPagesForHistory/);
   assert.match(source, /previewPages,/);
   assert.match(source, /await appendCanvasHistoryEntry/);
-  assert.match(source, /callRemoteInvoke\('aiDrawioGetDocument'\)/);
   assert.match(source, /callRemoteInvoke\('aiDrawioApplyDocument'/);
+  assert.match(source, /const appliedDocument = await applyDocumentWithoutHistory\(xml\)/);
+  assert.match(source, /buildSvgPreviewPagesForHistory\(appliedDocument\.xml\)/);
+  assert.match(source, /xml:\s*appliedDocument\.xml/);
 
-  const getDocumentIndex = source.indexOf("callRemoteInvoke('aiDrawioGetDocument')");
+  const applyDocumentIndex = source.indexOf("const appliedDocument = await applyDocumentWithoutHistory(xml)");
   const buildPreviewIndex = source.indexOf("const previewPages = await buildSvgPreviewPagesForHistory");
   const appendHistoryIndex = source.indexOf("await appendCanvasHistoryEntry");
-  const applyDocumentIndex = source.indexOf("callRemoteInvoke('aiDrawioApplyDocument'");
 
-  assert.notEqual(getDocumentIndex, -1);
+  assert.notEqual(applyDocumentIndex, -1);
   assert.notEqual(buildPreviewIndex, -1);
   assert.notEqual(appendHistoryIndex, -1);
-  assert.notEqual(applyDocumentIndex, -1);
-  assert.ok(getDocumentIndex < appendHistoryIndex);
+  assert.ok(applyDocumentIndex < buildPreviewIndex);
   assert.ok(buildPreviewIndex < appendHistoryIndex);
-  assert.ok(appendHistoryIndex < applyDocumentIndex);
 });
