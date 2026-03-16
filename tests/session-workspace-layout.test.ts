@@ -1,0 +1,62 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const SOURCE_PATH = new URL("../app/(internal)/_components/session-workspace.tsx", import.meta.url);
+
+test("session workspace uses a strict desktop flex shell structure", async () => {
+  const source = await readFile(SOURCE_PATH, "utf8");
+
+  assert.match(source, /@arco-design\/web-react/);
+  assert.match(source, /Layout/);
+  assert.match(source, /Card/);
+  assert.match(source, /Typography/);
+  assert.match(source, /Tag/);
+  assert.match(source, /Modal/);
+  assert.match(source, /Input/);
+  assert.match(source, /handleRenameConversation/);
+  assert.match(source, /renameDraftTitle/);
+  assert.match(source, /updateConversationTitle/);
+  assert.match(source, /重命名/);
+  assert.match(source, /data-layout="workspace-head"/);
+  assert.match(source, /data-layout="workspace-body"/);
+  assert.match(source, /data-layout="workspace-sidebar"/);
+  assert.match(source, /data-layout="workspace-main"/);
+  assert.match(source, /data-layout="workspace-main-toolbar"/);
+  assert.match(source, /data-layout="workspace-main-canvas"/);
+  assert.match(source, /internal-app-shell/);
+  assert.match(source, /toolbarSurfaceClassName/);
+  assert.match(source, /sidebarSurfaceClassName/);
+  assert.match(source, /flex flex-col h-full min-h-full p-\[18px\] lg:p-\[22px\]/);
+  assert.match(source, /mb-\[18px\][^"]*lg:mb-\[22px\]/);
+  assert.match(source, /flex min-h-0 flex-1 flex-col gap-\[14px\] lg:gap-4/);
+  assert.match(source, /min-h-0 flex min-w-0 flex-1 flex-col gap-4 lg:gap-\[18px\]/);
+  assert.match(source, /before:left-\[45%\][^"]*before:bg-\[radial-gradient\(circle,rgba\(59,130,246,0\.16\)_0%,transparent_72%\)\]/);
+  assert.match(source, /rounded-\[24px\][^"]*bg-\[linear-gradient\(145deg,rgba\(96,165,250,0\.24\)_0%,rgba\(45,212,191,0\.18\)_42%,rgba\(15,23,42,0\.08\)_100%\)\]/);
+  assert.match(source, /width=\{320\}/);
+  assert.match(source, /theme="dark"/);
+  assert.match(
+    source,
+    /<Content[\s\S]*style=\{\{ display: ['"]flex['"], flexDirection: ['"]column['"], minWidth: 0, minHeight: 0 \}\}[\s\S]*data-layout="workspace-main"/
+  );
+  assert.match(source, /paddingTop: 14/);
+  assert.match(source, /paddingInline: 18/);
+  assert.match(source, /width: ['"]100%['"],[\s\S]*height: ['"]100%['"]/);
+  assert.match(source, /bodyStyle=\{\{ padding: 0, height: ['"]100%['"], display: ['"]flex['"] \}\}/);
+  assert.match(source, /display: ['"]block['"]/);
+  assert.match(source, /width: ['"]100%['"]/);
+  assert.match(source, /height: ['"]100%['"]/);
+  assert.doesNotMatch(source, /internal-workspace-shell/);
+  assert.doesNotMatch(source, /internal-workspace-toolbar-card/);
+  assert.doesNotMatch(source, /internal-workspace-sidebar-card/);
+  assert.doesNotMatch(source, /internal-workspace-main-toolbar/);
+  assert.doesNotMatch(source, /internal-workspace-canvas-frame/);
+  assert.doesNotMatch(source, /extra=\{conversation \? <Text type="secondary">\{conversation\.id\}<\/Text> : null\}/);
+  assert.doesNotMatch(source, /<Text type="secondary" style=\{\{ maxWidth: 420, textAlign: 'right', wordBreak: 'break-all' \}\}>\s*\{DRAWIO_EMBED_PATH\}\s*<\/Text>/);
+  assert.doesNotMatch(
+    source,
+    /页面结构固定为顶部工作区头部与下方主体区。主体区严格拆成左侧会话栏和右侧画布工作区。/
+  );
+  assert.doesNotMatch(source, /同源 iframe 工作区，使用嵌入协议桥接文档读写。/);
+  assert.doesNotMatch(source, /左栏固定宽度，右侧为工具条与画布的垂直弹性布局。/);
+});

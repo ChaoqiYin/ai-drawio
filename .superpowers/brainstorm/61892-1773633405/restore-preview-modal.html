@@ -1,0 +1,119 @@
+<h2>Restore Preview Modal</h2>
+<p class="subtitle">Three dialog layouts for previewing a historical canvas snapshot as SVG before restore.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">Option A · Preview-first modal</div>
+        <div class="mockup-body" style="background:#0f172a;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;color:#e2e8f0;">
+            <div>
+              <div style="font-size:15px;font-weight:700;">Restore this version?</div>
+              <div style="font-size:12px;opacity:.72;">Preview first, confirm only after inspection.</div>
+            </div>
+            <div style="font-size:11px;padding:4px 8px;border-radius:999px;background:#1e293b;">History snapshot</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <div style="padding:6px 10px;border-radius:999px;background:#2563eb;color:white;font-size:12px;">Page 1</div>
+            <div style="padding:6px 10px;border-radius:999px;background:#1e293b;color:#cbd5e1;font-size:12px;">Page 2</div>
+            <div style="padding:6px 10px;border-radius:999px;background:#1e293b;color:#cbd5e1;font-size:12px;">Page 3</div>
+          </div>
+          <div style="height:210px;border-radius:16px;background:white;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;">
+            <svg width="220" height="150" viewBox="0 0 220 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="50" y="30" width="120" height="90" rx="12" fill="#DBEAFE" stroke="#2563EB" stroke-width="4"/>
+            </svg>
+            <div style="position:absolute;right:10px;bottom:10px;font-size:11px;background:#111827;color:white;padding:4px 8px;border-radius:999px;">SVG preview</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+            <div style="font-size:12px;color:#94a3b8;">Updated 2 min ago · Source: AI pre-apply</div>
+            <div style="display:flex;gap:8px;">
+              <div class="mock-button" style="background:#1e293b;">Cancel</div>
+              <div class="mock-button">Restore</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. Preview-first</h3>
+      <p>Large SVG area, tabs above it, metadata kept light. Fastest path when preview is the main decision tool.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">Option B · Inspector modal</div>
+        <div class="mockup-body" style="display:flex;gap:12px;background:#0f172a;padding:14px;">
+          <div style="width:118px;border-radius:14px;background:#111827;padding:12px;color:#cbd5e1;">
+            <div style="font-size:14px;font-weight:700;color:#f8fafc;margin-bottom:10px;">Snapshot info</div>
+            <div style="font-size:11px;line-height:1.5;">
+              Label<br/>AI Draft v4<br/><br/>
+              Time<br/>09:41<br/><br/>
+              Pages<br/>3
+            </div>
+            <div style="margin-top:12px;font-size:11px;padding:6px 8px;border-radius:10px;background:#1e293b;">Restore after review</div>
+          </div>
+          <div style="flex:1;">
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
+              <div style="padding:6px 10px;border-radius:8px;background:#2563eb;color:white;font-size:12px;">Page 1</div>
+              <div style="padding:6px 10px;border-radius:8px;background:#1e293b;color:#cbd5e1;font-size:12px;">Page 2</div>
+            </div>
+            <div style="height:210px;border-radius:16px;background:white;display:flex;align-items:center;justify-content:center;">
+              <svg width="220" height="150" viewBox="0 0 220 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="110" cy="75" r="44" fill="#DCFCE7" stroke="#16A34A" stroke-width="4"/>
+              </svg>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+              <div class="mock-button" style="background:#1e293b;">Cancel</div>
+              <div class="mock-button">Restore</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. Inspector</h3>
+      <p>More metadata visible at once, but preview area becomes smaller and the dialog feels denser.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">Option C · Guided confirmation</div>
+        <div class="mockup-body" style="background:#0f172a;padding:14px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+            <div style="width:28px;height:28px;border-radius:999px;background:#2563eb;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;">1</div>
+            <div style="font-size:12px;color:#cbd5e1;">Preview pages</div>
+            <div style="flex:1;height:2px;background:#1e293b;"></div>
+            <div style="width:28px;height:28px;border-radius:999px;background:#1e293b;color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:12px;">2</div>
+            <div style="font-size:12px;color:#64748b;">Confirm</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <div style="padding:6px 10px;border-radius:999px;background:#2563eb;color:white;font-size:12px;">Page 1</div>
+            <div style="padding:6px 10px;border-radius:999px;background:#1e293b;color:#cbd5e1;font-size:12px;">Page 2</div>
+          </div>
+          <div style="height:190px;border-radius:16px;background:white;display:flex;align-items:center;justify-content:center;">
+            <svg width="220" height="150" viewBox="0 0 220 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="32" y="52" width="58" height="42" rx="10" fill="#DBEAFE" stroke="#2563EB" stroke-width="4"/>
+              <circle cx="154" cy="74" r="25" fill="#DCFCE7" stroke="#16A34A" stroke-width="4"/>
+            </svg>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;color:#cbd5e1;font-size:12px;">
+            <div>Restore will create a new pre-restore snapshot.</div>
+            <div style="display:flex;gap:8px;">
+              <div class="mock-button" style="background:#1e293b;">Cancel</div>
+              <div class="mock-button">Continue</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. Guided flow</h3>
+      <p>Extra ceremony and safety cues, but slower. Better only if restore is considered high-risk.</p>
+    </div>
+  </div>
+</div>

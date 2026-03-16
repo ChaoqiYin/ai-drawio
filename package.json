@@ -1,0 +1,32 @@
+{
+  "name": "ai-drawio",
+  "bin": {
+    "ai-drawio": "./scripts/ai-drawio-cli.ts"
+  },
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "cli": "node --experimental-strip-types ./scripts/ai-drawio-cli.ts",
+    "web:dev": "next dev --hostname 127.0.0.1 --port 3001",
+    "build:web": "node --experimental-strip-types ./scripts/prepare-drawio.ts && next build",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri",
+    "test:node": "node --experimental-strip-types --test tests/*.ts"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.1",
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/node": "^24.12.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@arco-design/web-react": "^2.66.11",
+    "next": "^15.5.4",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  }
+}
