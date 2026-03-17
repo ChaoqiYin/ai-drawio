@@ -10,7 +10,9 @@ const SOURCE_PATH = new URL(
 test("session workspace uses a compact status bar layout for updated time and readiness", async () => {
   const source = await readFile(SOURCE_PATH, "utf8");
 
+  assert.match(source, /data-layout="workspace-top-nav-body"/);
   assert.match(source, /<div className="flex items-center justify-end gap-3" data-layout="workspace-status-bar">/);
-  assert.match(source, /<Space wrap size=\{8\}>[\s\S]*重命名[\s\S]*更新时间[\s\S]*draw\.io 已就绪/);
+  assert.match(source, /data-layout="workspace-status-bar"[\s\S]*<Space size=\{8\}>[\s\S]*重命名[\s\S]*更新时间[\s\S]*draw\.io 已就绪/);
+  assert.doesNotMatch(source, /<Space direction="vertical" size=\{14\} style=\{\{ display: 'flex' \}\}>[\s\S]*data-layout="workspace-status-bar"/);
   assert.doesNotMatch(source, /data-layout="workspace-status-bar"[\s\S]*<div className="flex justify-end gap-5">/);
 });

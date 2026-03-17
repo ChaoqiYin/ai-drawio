@@ -17,7 +17,7 @@ import {
   Tag,
   Typography,
 } from '@arco-design/web-react';
-import { IconEdit, IconLeft } from '@arco-design/web-react/icon';
+import { IconEdit } from '@arco-design/web-react/icon';
 
 import {
   buildBrowserFileTitle,
@@ -37,6 +37,7 @@ import {
   updateConversationTitle,
 } from '../_lib/conversation-store';
 import { saveHomeRedirectError } from '../_lib/conversation-route-state';
+import { InternalTopNavigation } from './internal-top-navigation';
 
 const DRAWIO_EMBED_PATH = '/drawio/index.html?embed=1&proto=json&spin=1&noSaveBtn=1&noExitBtn=1&saveAndExit=0';
 
@@ -48,7 +49,6 @@ const pageShellClassName = 'flex flex-col h-full min-h-full p-[18px] lg:p-[22px]
 const shellBodyClassName = 'min-h-0 flex flex-1 gap-4 bg-transparent!';
 const sidebarClassName = 'h-full overflow-hidden bg-transparent!';
 const workspaceClassName = 'min-h-0 flex min-w-0 flex-1 flex-col gap-4 lg:gap-[18px] bg-transparent!';
-const topNavSurfaceClassName = 'bg-transparent';
 const toolbarSurfaceClassName = 'bg-transparent';
 const sidebarSurfaceClassName = 'bg-transparent';
 const workspaceCanvasClassName =
@@ -1196,37 +1196,33 @@ export default function SessionWorkspace() {
     <Layout className={shellClassName}>
       <div className={pageShellClassName}>
         <Header className="mb-[14px]! h-auto bg-transparent p-0" data-layout="workspace-head">
-          <Space direction="vertical" size={14} style={{ display: 'flex' }}>
-            <Card
-              className={`internal-panel ${topNavSurfaceClassName}`}
-              style={toolbarCardStyle}
-              bodyStyle={{ padding: '8px 10px' }}
-              data-layout="workspace-top-nav"
-            >
-              <div className="flex items-center gap-4">
-                <Button type="primary" size="mini" icon={<IconLeft />} onClick={handleNavigateBack}>
-                  返回
-                </Button>
+          <InternalTopNavigation
+            onBack={handleNavigateBack}
+            content={
+              <div
+                className="flex min-w-0 flex-1 items-center justify-between gap-4"
+                data-layout="workspace-top-nav-body"
+              >
                 <Breadcrumb
                   data-layout="workspace-breadcrumb"
                   routes={breadcrumbRoutes}
                   itemRender={renderBreadcrumbItem}
                 />
-              </div>
-            </Card>
 
-            <div className="flex items-center justify-end gap-3" data-layout="workspace-status-bar">
-              <Space size={8}>
-                <Button icon={<IconEdit />} onClick={openRenameDialog} disabled={!conversation || isRenaming}>
-                  重命名
-                </Button>
-                {conversation ? <Tag color="green">更新时间 {formatDate(conversation.updatedAt)}</Tag> : null}
-                <Tag color={isFrameReady ? 'green' : 'gold'}>
-                  {isFrameReady ? 'draw.io 已就绪' : '正在加载 draw.io'}
-                </Tag>
-              </Space>
-            </div>
-          </Space>
+                <div className="flex items-center justify-end gap-3" data-layout="workspace-status-bar">
+                  <Space size={8}>
+                    <Button icon={<IconEdit />} onClick={openRenameDialog} disabled={!conversation || isRenaming}>
+                      重命名
+                    </Button>
+                    {conversation ? <Tag color="green">更新时间 {formatDate(conversation.updatedAt)}</Tag> : null}
+                    <Tag color={isFrameReady ? 'green' : 'gold'}>
+                      {isFrameReady ? 'draw.io 已就绪' : '正在加载 draw.io'}
+                    </Tag>
+                  </Space>
+                </div>
+              </div>
+            }
+          />
         </Header>
 
         <Layout hasSider className={shellBodyClassName} data-layout="workspace-body">
@@ -1245,9 +1241,6 @@ export default function SessionWorkspace() {
               }}
             >
               <div className="flex min-h-0 flex-1 flex-col gap-[14px] lg:gap-4">
-                <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                  当前 AI 会话在本地 IndexedDB 中保存的历史内容。
-                </Paragraph>
                 {error ? <Alert type="error" content={error} showIcon /> : null}
 
                 {timelineEntries.length ? (

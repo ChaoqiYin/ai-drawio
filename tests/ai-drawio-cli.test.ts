@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, readdir } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
   buildControlEnvelope,
   extractResolvedSessionId,
   getSessionResolutionCommand,
-  parseCliArgs
+  parseCliArgs,
+  writeSvgPagesToDirectory
 } from "../scripts/ai-drawio-cli.ts";
 
 test("parseCliArgs parses session open", () => {
@@ -73,6 +77,39 @@ test("parseCliArgs allows canvas document get without session id", () => {
   assert.equal(parsed.command, "canvas.document.get");
   assert.equal(parsed.outputFile, "./current.xml");
   assert.equal(parsed.sessionId, null);
+});
+
+test("parseCliArgs parses canvas document svg with output directory", () => {
+  const parsed = parseCliArgs([
+    "canvas",
+    "document.svg",
+    "--session",
+    "sess-svg-1",
+    "--output-file",
+    "./exports"
+  ]);
+
+  assert.equal(parsed.command, "canvas.document.svg");
+  assert.equal(parsed.outputFile, "./exports");
+  assert.equal(parsed.sessionId, "sess-svg-1");
+  assert.deepEqual(parsed.payload, {
+    title: null
+  });
+});
+
+test("parseCliArgs parses canvas document svg with session title", () => {
+  const parsed = parseCliArgs([
+    "canvas",
+    "document.svg",
+    "--session-title",
+    "本地绘画 SVG"
+  ]);
+
+  assert.equal(parsed.command, "canvas.document.svg");
+  assert.equal(parsed.sessionId, null);
+  assert.deepEqual(parsed.payload, {
+    title: "本地绘画 SVG"
+  });
 });
 
 test("parseCliArgs parses canvas document apply with xml file", () => {
@@ -170,6 +207,17 @@ test("getSessionResolutionCommand uses session.ensure when session id is omitted
   });
 });
 
+test("getSessionResolutionCommand accepts canvas document svg", () => {
+  const parsed = parseCliArgs(["canvas", "document.svg"]);
+  const resolution = getSessionResolutionCommand(parsed);
+
+  assert.deepEqual(resolution, {
+    command: "session.ensure",
+    payload: {},
+    sessionId: null
+  });
+});
+
 test("getSessionResolutionCommand uses session.open when a session id is provided", () => {
   const parsed = parseCliArgs(["canvas", "document.get", "--session", "sess-9"]);
   const resolution = getSessionResolutionCommand(parsed);
@@ -231,4 +279,35 @@ test("buildControlEnvelope creates the control payload shape", async () => {
   assert.equal(envelope.source.name, "ai-drawio-cli");
   assert.equal(typeof envelope.requestId, "string");
   assert.equal(envelope.sessionId, null);
+});
+
+test("writeSvgPagesToDirectory writes one svg file per page and annotates output paths", async () => {
+  const outputDir = await mkdtemp(path.join(os.tmpdir(), "ai-drawio-svg-"));
+  const pages = [
+    {
+      id: "page-1",
+      name: "首页/流程图",
+      svg: "<svg><text>one</text></svg>"
+    },
+    {
+      id: "page-2",
+      name: "",
+      svg: "<svg><text>two</text></svg>"
+    }
+  ];
+
+  const writtenPages = await writeSvgPagesToDirectory(outputDir, pages);
+  const fileNames = (await readdir(outputDir)).sort();
+
+  assert.deepEqual(fileNames, ["01-首页-流程图.svg", "page-02.svg"]);
+  assert.equal(writtenPages[0].outputPath, path.join(outputDir, "01-首页-流程图.svg"));
+  assert.equal(writtenPages[1].outputPath, path.join(outputDir, "page-02.svg"));
+  assert.equal(
+    await readFile(path.join(outputDir, "01-首页-流程图.svg"), "utf8"),
+    "<svg><text>one</text></svg>"
+  );
+  assert.equal(
+    await readFile(path.join(outputDir, "page-02.svg"), "utf8"),
+    "<svg><text>two</text></svg>"
+  );
 });

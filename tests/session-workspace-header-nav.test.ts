@@ -11,24 +11,21 @@ test("session workspace renders a standalone top navigation with breadcrumb and 
   const source = await readFile(SOURCE_PATH, "utf8");
 
   assert.match(source, /Breadcrumb/);
-  assert.match(source, /data-layout="workspace-top-nav"/);
   assert.match(source, /data-layout="workspace-breadcrumb"/);
+  assert.match(source, /InternalTopNavigation/);
   assert.match(source, /const breadcrumbRoutes = \[/);
   assert.match(source, /breadcrumbName: '历史记录'/);
   assert.match(source, /breadcrumbName: conversation\?\.title \|\| '未命名会话'/);
   assert.match(source, /const renderBreadcrumbItem = \(/);
   assert.match(source, /router\.push\('\/'\)/);
+  assert.match(source, /const handleNavigateBack = \(\): void => \{[\s\S]*router\.push\('\/'\)/);
   assert.match(
     source,
-    /const handleNavigateBack = \(\): void => \{[\s\S]*window\.history\.length > 1[\s\S]*router\.back\(\)[\s\S]*router\.push\('\/'\)/
+    /<InternalTopNavigation[\s\S]*onBack=\{handleNavigateBack\}[\s\S]*content=\{\s*<div[\s\S]*data-layout="workspace-top-nav-body"[\s\S]*<Breadcrumb[\s\S]*data-layout="workspace-breadcrumb"[\s\S]*routes=\{breadcrumbRoutes\}[\s\S]*itemRender=\{renderBreadcrumbItem\}/
   );
   assert.match(
     source,
-    /data-layout="workspace-top-nav"[\s\S]*<Button icon=\{<IconLeft \/>\} onClick=\{handleNavigateBack\}>\s*返回\s*<\/Button>[\s\S]*<Breadcrumb data-layout="workspace-breadcrumb" routes=\{breadcrumbRoutes\} itemRender=\{renderBreadcrumbItem\}/
-  );
-  assert.match(
-    source,
-    /data-layout="workspace-head"[\s\S]*重命名[\s\S]*更新时间[\s\S]*draw\.io 已就绪/
+    /data-layout="workspace-top-nav-body"[\s\S]*重命名[\s\S]*更新时间[\s\S]*draw\.io 已就绪/
   );
   assert.doesNotMatch(source, /<Breadcrumb\.Item/);
   assert.doesNotMatch(source, /href=\"\/\"/);

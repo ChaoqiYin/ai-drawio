@@ -230,6 +230,21 @@ export function parseCliArgs(argv: string[]): ParsedCommand {
       };
     }
 
+    if (subcommand === "document.svg") {
+      if (args.length > 0) {
+        fail(`未知参数: ${args.join(" ")}`);
+      }
+
+      return {
+        command: "canvas.document.svg",
+        outputFile,
+        payload: {
+          title: sessionTitle || null
+        },
+        sessionId
+      };
+    }
+
     if (subcommand === "document.apply") {
       const xmlFile = takeFlag(args, "--xml-file");
       const xmlFromStdin = takeBooleanFlag(args, "--xml-stdin");
@@ -343,6 +358,7 @@ export function getSessionResolutionCommand(
 ): SessionResolutionCommand {
   if (
     parsedCommand.command !== "canvas.document.get" &&
+    parsedCommand.command !== "canvas.document.svg" &&
     parsedCommand.command !== "canvas.document.apply" &&
     parsedCommand.command !== "canvas.document.restore"
   ) {
@@ -509,6 +525,7 @@ export async function executeCli(argv: string[]): Promise<Record<string, any>> {
 
   if (
     parsedCommand.command === "canvas.document.get" ||
+    parsedCommand.command === "canvas.document.svg" ||
     parsedCommand.command === "canvas.document.apply" ||
     parsedCommand.command === "canvas.document.restore"
   ) {
