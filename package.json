@@ -12,8 +12,6 @@
     "tauri:icons": "tauri icon ./assets/ai-drawio.svg --output ./src-tauri/icons",
     "dev": "npm run tauri:icons && tauri dev",
     "build": "npm run tauri:icons && tauri build",
-    "build:macos:dmg": "sh ./scripts/build-macos-cli-dmg.sh",
-    "build:macos:pkg": "./scripts/build-macos-cli-pkg.sh",
     "tauri": "tauri",
     "test:node": "node --experimental-strip-types --test tests/*.ts"
   },

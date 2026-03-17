@@ -26,10 +26,8 @@ The desktop app starts on a local AI conversation history page and opens draw.io
   Runs `tauri dev`, which triggers the static frontend build before launching the desktop app.
 - `npm run build`
   Runs `tauri build`, which also rebuilds the static frontend first.
-- `npm run build:macos:dmg`
+- `npm run build -- --bundles dmg`
   Runs the Tauri macOS DMG bundler for drag-and-drop installation of `AI Drawio.app`.
-- `npm run build:macos:pkg`
-  Builds the macOS `.app`, then wraps it in a local installer package at `src-tauri/target/release/bundle/pkg/ai-drawio-installer.pkg`.
 
 ## Frontend Routes
 

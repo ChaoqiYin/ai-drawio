@@ -85,7 +85,7 @@ test("tauri exposes dmg cli install commands and bundles install resources", asy
   assert.match(configSource, /install-cli-to-path\.sh/);
   assert.match(configSource, /SharedSupport\/cli-completions/);
   assert.match(buildSource, /generate_to/);
-  assert.match(packageJson, /build:macos:dmg/);
+  assert.match(packageJson, /"build"\s*:\s*"[^"]*tauri build"/);
   assert.match(readme, /Install ai-drawio into PATH/);
   assert.match(installSource, /\/usr\/local\/bin\/ai-drawio/);
 });
@@ -94,7 +94,7 @@ test("tauri exposes dmg cli install commands and bundles install resources", asy
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npm run test:node -- tests/dmg-cli-install-source.test.ts`
-Expected: FAIL because the new Tauri commands, bundled script, and DMG build script are not wired yet.
+Expected: FAIL because the new Tauri commands, bundled script, and DMG packaging path are not wired yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -259,7 +259,6 @@ Expected: PASS
 
 **Files:**
 - Create: `src-tauri/resources/macos/install-cli-to-path.sh`
-- Create: `scripts/build-macos-cli-dmg.sh`
 - Modify: `package.json`
 - Modify: `src-tauri/tauri.conf.json`
 - Modify: `README.md`
@@ -272,21 +271,20 @@ Extend `tests/dmg-cli-install-source.test.ts` to check for:
 - the bundled installer script resource path
 - `/usr/local/bin/ai-drawio` symlink creation logic
 - completion destination paths
-- `build:macos:dmg` script
+- direct `tauri build --bundles dmg` usage through the package build entry
 - README instructions for drag-and-drop install plus in-app PATH install
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npm run test:node -- tests/dmg-cli-install-source.test.ts`
-Expected: FAIL because the DMG-oriented script and docs do not exist yet.
+Expected: FAIL because the DMG-oriented packaging entry and docs do not exist yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
 Implement:
 
 - a reusable macOS install script bundled into the app resources
-- a DMG build shell script that invokes the existing Tauri build for DMG output
-- package.json script wiring for the DMG build
+- package.json build wiring that directly invokes `tauri build --bundles dmg`
 - Tauri bundle config updated to include the install script and target DMG
 - README updates that remove PKG as the primary CLI registration path
 
@@ -298,8 +296,6 @@ Expected: PASS
 ### Task 8: Remove or quarantine the old PKG-specific registration path
 
 **Files:**
-- Modify: `scripts/build-macos-cli-pkg.sh`
-- Modify: `src-tauri/pkg/macos/scripts/postinstall`
 - Modify: `README.md`
 - Test: `tests/packaged-tauri-cli-source.test.ts`
 
@@ -314,10 +310,10 @@ Expected: FAIL because the current test still assumes PKG-specific registration.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Adjust the legacy PKG assets so they are no longer treated as the primary install path for this feature. Either:
+Adjust legacy PKG references so they are no longer treated as the primary install path for this feature. Either:
 
-- remove the PKG-only script references from active docs and tests, or
-- leave the files in place but clearly mark them as legacy/non-primary while preserving backward compatibility
+- remove the PKG-only references from active docs and tests, or
+- leave any remaining legacy assets in place but clearly mark them as non-primary while preserving backward compatibility
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -357,13 +353,12 @@ Expected: PASS
 ### Task 10: Run manual macOS packaging verification
 
 **Files:**
-- Modify: `scripts/build-macos-cli-dmg.sh`
 - Modify: `src-tauri/tauri.conf.json`
 - Modify: `README.md`
 
 - [ ] **Step 1: Build the DMG artifact**
 
-Run: `npm run build:macos:dmg`
+Run: `npm run build -- --bundles dmg`
 Expected: PASS and a DMG output under `src-tauri/target/release/bundle/dmg/`
 
 - [ ] **Step 2: Install the app by drag-and-drop**

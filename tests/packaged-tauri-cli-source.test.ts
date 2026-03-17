@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 
 const MAIN_SOURCE_PATH = new URL("../src-tauri/src/main.rs", import.meta.url);
 const BUILD_SOURCE_PATH = new URL("../src-tauri/build.rs", import.meta.url);
@@ -9,11 +9,6 @@ const TAURI_CONFIG_PATH = new URL("../src-tauri/tauri.conf.json", import.meta.ur
 const PACKAGED_CLI_SOURCE_PATH = new URL("../src-tauri/src/packaged_cli.rs", import.meta.url);
 const PACKAGE_JSON_PATH = new URL("../package.json", import.meta.url);
 const MACOS_APP_ICON_PATH = new URL("../assets/ai-drawio.icns", import.meta.url);
-const MACOS_PKG_SCRIPT_PATH = new URL("../scripts/build-macos-cli-pkg.sh", import.meta.url);
-const MACOS_POSTINSTALL_PATH = new URL(
-  "../src-tauri/pkg/macos/scripts/postinstall",
-  import.meta.url
-);
 
 test("packaged tauri cli wires plugin, parser, and completion generation", async () => {
   const [mainSource, buildSource, cargoToml, tauriConfig] = await Promise.all([
@@ -45,25 +40,23 @@ test("packaged tauri cli wires plugin, parser, and completion generation", async
   assert.match(packagedCliSource, /xml-stdin/);
 });
 
-test("macOS installer automation registers ai-drawio into PATH", async () => {
-  const [packageJson, tauriConfig, pkgScript, postinstallScript, readme] = await Promise.all([
+test("package scripts keep direct tauri build entrypoints without wrapper shell scripts", async () => {
+  const [packageJson, tauriConfig, readme] = await Promise.all([
     readFile(PACKAGE_JSON_PATH, "utf8"),
     readFile(TAURI_CONFIG_PATH, "utf8"),
-    readFile(MACOS_PKG_SCRIPT_PATH, "utf8"),
-    readFile(MACOS_POSTINSTALL_PATH, "utf8"),
     readFile(new URL("../README.md", import.meta.url), "utf8")
   ]);
 
-  assert.match(packageJson, /"build:macos:dmg"\s*:/);
-  assert.match(pkgScript, /pkgbuild/);
-  assert.match(pkgScript, /--component/);
-  assert.match(postinstallScript, /\/usr\/local\/bin\/ai-drawio/);
-  assert.match(postinstallScript, /vendor_completions\.d|bash_completion\.d|site-functions/);
+  await assert.rejects(() => access(new URL("../scripts/build-macos-cli-dmg.sh", import.meta.url)));
+  await assert.rejects(() => access(new URL("../scripts/build-macos-cli-pkg.sh", import.meta.url)));
+  assert.doesNotMatch(packageJson, /"build:macos:dmg"\s*:/);
+  assert.doesNotMatch(packageJson, /"build:macos:pkg"\s*:/);
+  assert.match(packageJson, /"build"\s*:\s*"[^"]*tauri build"/);
   assert.match(tauriConfig, /"targets"\s*:\s*"dmg"|\"targets\"\s*:\s*\[\s*\"dmg\"\s*\]/);
   assert.match(tauriConfig, /"SharedSupport\/cli-completions\/_ai-drawio"/);
   assert.match(tauriConfig, /"SharedSupport\/cli-completions\/ai-drawio\.bash"/);
   assert.match(tauriConfig, /"SharedSupport\/cli-completions\/ai-drawio\.fish"/);
-  assert.match(readme, /build:macos:dmg/);
+  assert.match(readme, /npm run build -- --bundles dmg/);
   assert.match(readme, /Install ai-drawio into PATH/);
 });
 
