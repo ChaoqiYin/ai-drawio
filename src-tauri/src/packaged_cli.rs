@@ -31,6 +31,10 @@ pub enum PackagedCliCommand {
         locator: Option<SessionLocator>,
         output_file: Option<String>,
     },
+    CanvasDocumentSvg {
+        locator: Option<SessionLocator>,
+        output_file: Option<String>,
+    },
     CanvasDocumentApply {
         locator: Option<SessionLocator>,
         xml_file: Option<String>,
@@ -109,6 +113,10 @@ fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
                 locator: parse_optional_locator(get_matches, "session", "session-title"),
                 output_file: string_arg(get_matches, "output-file"),
             }),
+            Some(("document.svg", svg_matches)) => Ok(PackagedCliCommand::CanvasDocumentSvg {
+                locator: parse_optional_locator(svg_matches, "session", "session-title"),
+                output_file: string_arg(svg_matches, "output-file"),
+            }),
             Some(("document.apply", apply_matches)) => Ok(PackagedCliCommand::CanvasDocumentApply {
                 locator: parse_optional_locator(apply_matches, "session", "session-title"),
                 xml_file: string_arg(apply_matches, "xml-file"),
@@ -117,7 +125,7 @@ fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
                 prompt: string_arg(apply_matches, "prompt"),
                 output_file: string_arg(apply_matches, "output-file"),
             }),
-            _ => Err("canvas only supports document.get or document.apply".to_string()),
+            _ => Err("canvas only supports document.get, document.svg or document.apply".to_string()),
         },
         _ => Err("missing command".to_string()),
     }
@@ -126,6 +134,7 @@ fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
 pub fn build_resolution_request(command: &PackagedCliCommand) -> Option<ControlRequest> {
     let locator = match command {
         PackagedCliCommand::CanvasDocumentGet { locator, .. } => locator.as_ref(),
+        PackagedCliCommand::CanvasDocumentSvg { locator, .. } => locator.as_ref(),
         PackagedCliCommand::CanvasDocumentApply { locator, .. } => locator.as_ref(),
         _ => return None,
     };
@@ -196,6 +205,12 @@ pub fn build_request_for_command(
             json!({}),
             CONTROL_TIMEOUT_MS,
         )),
+        PackagedCliCommand::CanvasDocumentSvg { .. } => Ok(build_request(
+            "canvas.document.svg",
+            session_id,
+            json!({}),
+            CONTROL_TIMEOUT_MS,
+        )),
         PackagedCliCommand::CanvasDocumentApply {
             xml_file,
             xml_stdin,
@@ -248,14 +263,14 @@ pub fn execute_cli(command: &PackagedCliCommand) -> Result<ControlResponse, Stri
         } else {
             let session_id = extract_resolved_session_id(&resolution_response)?;
             let request = build_request_for_command(command, Some(session_id))?;
-            let response = send_control_request(&request)?;
-            maybe_write_output_file(command, &response)?;
+            let mut response = send_control_request(&request)?;
+            maybe_write_output_file(command, &mut response)?;
             response
         }
     } else {
         let request = build_request_for_command(command, None)?;
-        let response = send_control_request(&request)?;
-        maybe_write_output_file(command, &response)?;
+        let mut response = send_control_request(&request)?;
+        maybe_write_output_file(command, &mut response)?;
         response
     };
 
@@ -366,9 +381,13 @@ fn extract_resolved_session_id(response: &ControlResponse) -> Result<String, Str
     Err("control response is missing a resolved session id".to_string())
 }
 
-fn maybe_write_output_file(command: &PackagedCliCommand, response: &ControlResponse) -> Result<(), String> {
+fn maybe_write_output_file(
+    command: &PackagedCliCommand,
+    response: &mut ControlResponse,
+) -> Result<(), String> {
     let output_file = match command {
         PackagedCliCommand::CanvasDocumentGet { output_file, .. } => output_file.as_ref(),
+        PackagedCliCommand::CanvasDocumentSvg { output_file, .. } => output_file.as_ref(),
         PackagedCliCommand::CanvasDocumentApply { output_file, .. } => output_file.as_ref(),
         _ => None,
     };
@@ -376,6 +395,50 @@ fn maybe_write_output_file(command: &PackagedCliCommand, response: &ControlRespo
     let Some(output_file) = output_file else {
         return Ok(());
     };
+
+    if let Some(pages) = response
+        .data
+        .as_ref()
+        .and_then(|value| value.get("pages"))
+        .and_then(Value::as_array)
+    {
+        fs::create_dir_all(output_file)
+            .map_err(|error| format!("failed to create output directory '{output_file}': {error}"))?;
+
+        let mut updated_pages = Vec::with_capacity(pages.len());
+
+        for (index, page) in pages.iter().enumerate() {
+            let page_name = page
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim();
+            let svg = page
+                .get("svg")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+
+            if svg.is_empty() {
+                continue;
+            }
+
+            let file_name = build_svg_page_file_name(index, page_name);
+            let output_path = format!("{output_file}/{file_name}");
+            fs::write(&output_path, svg).map_err(|error| {
+                format!("failed to write svg output file '{output_path}': {error}")
+            })?;
+
+            let mut updated_page = page.as_object().cloned().unwrap_or_default();
+            updated_page.insert("outputPath".to_string(), Value::String(output_path));
+            updated_pages.push(Value::Object(updated_page));
+        }
+
+        if let Some(Value::Object(data)) = response.data.as_mut() {
+            data.insert("pages".to_string(), Value::Array(updated_pages));
+        }
+
+        return Ok(());
+    }
 
     let Some(xml) = response
         .data
@@ -388,6 +451,28 @@ fn maybe_write_output_file(command: &PackagedCliCommand, response: &ControlRespo
 
     fs::write(output_file, xml)
         .map_err(|error| format!("failed to write output file '{output_file}': {error}"))
+}
+
+fn sanitize_svg_page_name(name: &str) -> String {
+    name
+        .trim()
+        .replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], "-")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim_matches('-')
+        .to_string()
+}
+
+fn build_svg_page_file_name(index: usize, page_name: &str) -> String {
+    let page_number = format!("{:02}", index + 1);
+    let sanitized_name = sanitize_svg_page_name(page_name);
+
+    if sanitized_name.is_empty() {
+        format!("page-{page_number}.svg")
+    } else {
+        format!("{page_number}-{sanitized_name}.svg")
+    }
 }
 
 fn inject_launched(response: &mut ControlResponse, launched: bool) {
@@ -482,10 +567,13 @@ fn parse_optional_locator(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_request_for_command, build_resolution_request, parse_cli_args, PackagedCliCommand,
-        SessionLocator,
+        build_request_for_command, build_resolution_request, maybe_write_output_file,
+        parse_cli_args, PackagedCliCommand, SessionLocator,
     };
+    use crate::control_protocol::ControlResponse;
     use serde_json::json;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn parses_session_open_with_positional_session_id() {
@@ -550,6 +638,20 @@ mod tests {
     }
 
     #[test]
+    fn parses_document_svg_with_output_directory() {
+        let command = parse_cli_args(&["canvas", "document.svg", "--output-file", "./exports"])
+            .expect("document svg should parse");
+
+        assert_eq!(
+            command,
+            PackagedCliCommand::CanvasDocumentSvg {
+                locator: None,
+                output_file: Some("./exports".to_string())
+            }
+        );
+    }
+
+    #[test]
     fn rejects_document_apply_when_both_input_modes_are_provided() {
         let error = parse_cli_args(&[
             "canvas",
@@ -569,6 +671,19 @@ mod tests {
             output_file: None,
         })
         .expect("document get should need a resolution request");
+
+        assert_eq!(request.command, "session.ensure");
+        assert_eq!(request.payload, json!({}));
+        assert_eq!(request.session_id, None);
+    }
+
+    #[test]
+    fn builds_session_ensure_resolution_for_document_svg_without_locator() {
+        let request = build_resolution_request(&PackagedCliCommand::CanvasDocumentSvg {
+            locator: None,
+            output_file: None,
+        })
+        .expect("document svg should need a resolution request");
 
         assert_eq!(request.command, "session.ensure");
         assert_eq!(request.payload, json!({}));
@@ -605,5 +720,54 @@ mod tests {
         assert_eq!(request.command, "session.open");
         assert_eq!(request.payload, json!({ "title": "Alpha" }));
         assert_eq!(request.session_id, None);
+    }
+
+    #[test]
+    fn writes_svg_pages_to_directory_and_sets_output_paths() {
+        let output_dir = std::env::temp_dir().join(format!(
+            "ai-drawio-svg-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let mut response = ControlResponse {
+            command: "canvas.document.svg".to_string(),
+            data: Some(json!({
+                "pages": [
+                    {
+                        "id": "page-1",
+                        "name": "首页/流程图",
+                        "svg": "<svg><text>one</text></svg>"
+                    }
+                ]
+            })),
+            error: None,
+            ok: true,
+            request_id: "req-1".to_string(),
+            session_id: Some("sess-1".to_string()),
+        };
+
+        maybe_write_output_file(
+            &PackagedCliCommand::CanvasDocumentSvg {
+                locator: None,
+                output_file: Some(output_dir.display().to_string()),
+            },
+            &mut response,
+        )
+        .expect("svg pages should be written");
+
+        let output_path = response.data.as_ref().and_then(|value| {
+            value.get("pages")
+                .and_then(|pages| pages.get(0))
+                .and_then(|page| page.get("outputPath"))
+                .and_then(|path| path.as_str())
+                .map(str::to_string)
+        });
+
+        assert!(output_path.is_some());
+        assert!(output_dir.join("01-首页-流程图.svg").exists());
+
+        let _ = fs::remove_dir_all(output_dir);
     }
 }

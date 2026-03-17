@@ -8,6 +8,7 @@ const CARGO_TOML_PATH = new URL("../src-tauri/Cargo.toml", import.meta.url);
 const TAURI_CONFIG_PATH = new URL("../src-tauri/tauri.conf.json", import.meta.url);
 const PACKAGED_CLI_SOURCE_PATH = new URL("../src-tauri/src/packaged_cli.rs", import.meta.url);
 const PACKAGE_JSON_PATH = new URL("../package.json", import.meta.url);
+const MACOS_APP_ICON_PATH = new URL("../assets/ai-drawio.icns", import.meta.url);
 const MACOS_PKG_SCRIPT_PATH = new URL("../scripts/build-macos-cli-pkg.sh", import.meta.url);
 const MACOS_POSTINSTALL_PATH = new URL(
   "../src-tauri/pkg/macos/scripts/postinstall",
@@ -39,24 +40,40 @@ test("packaged tauri cli wires plugin, parser, and completion generation", async
   assert.match(tauriConfig, /"plugins"\s*:\s*\{/);
   assert.match(tauriConfig, /"cli"\s*:/);
   assert.match(tauriConfig, /"document\.apply"/);
+  assert.match(packagedCliSource, /document\.svg/);
   assert.match(packagedCliSource, /session open <session-id>|session-id/);
   assert.match(packagedCliSource, /xml-stdin/);
 });
 
 test("macOS installer automation registers ai-drawio into PATH", async () => {
-  const [packageJson, tauriConfig, pkgScript, postinstallScript] = await Promise.all([
+  const [packageJson, tauriConfig, pkgScript, postinstallScript, readme] = await Promise.all([
     readFile(PACKAGE_JSON_PATH, "utf8"),
     readFile(TAURI_CONFIG_PATH, "utf8"),
     readFile(MACOS_PKG_SCRIPT_PATH, "utf8"),
-    readFile(MACOS_POSTINSTALL_PATH, "utf8")
+    readFile(MACOS_POSTINSTALL_PATH, "utf8"),
+    readFile(new URL("../README.md", import.meta.url), "utf8")
   ]);
 
-  assert.match(packageJson, /"build:macos:pkg"\s*:/);
+  assert.match(packageJson, /"build:macos:dmg"\s*:/);
   assert.match(pkgScript, /pkgbuild/);
   assert.match(pkgScript, /--component/);
   assert.match(postinstallScript, /\/usr\/local\/bin\/ai-drawio/);
   assert.match(postinstallScript, /vendor_completions\.d|bash_completion\.d|site-functions/);
+  assert.match(tauriConfig, /"targets"\s*:\s*"dmg"|\"targets\"\s*:\s*\[\s*\"dmg\"\s*\]/);
   assert.match(tauriConfig, /"SharedSupport\/cli-completions\/_ai-drawio"/);
   assert.match(tauriConfig, /"SharedSupport\/cli-completions\/ai-drawio\.bash"/);
   assert.match(tauriConfig, /"SharedSupport\/cli-completions\/ai-drawio\.fish"/);
+  assert.match(readme, /build:macos:dmg/);
+  assert.match(readme, /Install ai-drawio into PATH/);
+});
+
+test("macOS dmg bundle sources the packaged app icon from the shared icns asset", async () => {
+  const [tauriConfig, macosIcon] = await Promise.all([
+    readFile(TAURI_CONFIG_PATH, "utf8"),
+    readFile(MACOS_APP_ICON_PATH)
+  ]);
+
+  assert.ok(macosIcon.length > 0);
+  assert.match(tauriConfig, /"icon"\s*:\s*\[/);
+  assert.match(tauriConfig, /\.\.\/assets\/ai-drawio\.icns/);
 });

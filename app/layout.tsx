@@ -3,6 +3,7 @@ import './globals.css';
 
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import AppStartupReady from './_components/app-startup-ready';
 import { ArcoConfigProvider } from './arco-config-provider';
 
 export const metadata: Metadata = {
@@ -14,6 +15,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
   return (
     <html lang="zh-CN">
       <body arco-theme="light">
+        <AppStartupReady />
         <ArcoConfigProvider>{children}</ArcoConfigProvider>
       </body>
     </html>

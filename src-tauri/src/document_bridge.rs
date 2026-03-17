@@ -26,6 +26,26 @@ return await window.__AI_DRAWIO_SHELL__.documentBridge.getDocument();
     build_document_payload(value, &state)
 }
 
+pub fn export_svg_pages(
+    app: &AppHandle,
+    bridge_state: &ScriptResultBridgeState,
+    session_id: &str,
+    timeout: Duration,
+) -> Result<Value, ControlError> {
+    let state = require_active_session(app, bridge_state, session_id, timeout)?;
+    let value = eval_main_window_script_with_result(
+        app,
+        bridge_state,
+        r#"
+return await window.__AI_DRAWIO_SHELL__.documentBridge.exportSvgPages();
+"#,
+        timeout,
+    )
+    .map_err(|error| ControlError::new("DOCUMENT_NOT_AVAILABLE", error))?;
+
+    build_svg_pages_payload(value, &state)
+}
+
 pub fn apply_document(
     app: &AppHandle,
     bridge_state: &ScriptResultBridgeState,
@@ -176,6 +196,80 @@ fn build_document_payload(value: Value, state: &ShellState) -> Result<Value, Con
     }))
 }
 
+fn build_svg_pages_payload(value: Value, state: &ShellState) -> Result<Value, ControlError> {
+    let pages = value
+        .get("pages")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            ControlError::new(
+                "DOCUMENT_NOT_AVAILABLE",
+                "document svg pages are missing from the bridge response",
+            )
+        })?;
+
+    if pages.is_empty() {
+        return Err(ControlError::new(
+            "DOCUMENT_NOT_AVAILABLE",
+            "document svg export returned no pages",
+        ));
+    }
+
+    let normalized_pages = pages
+        .iter()
+        .enumerate()
+        .map(|(index, page)| {
+            let id = page
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("page-{}", index + 1));
+            let name = page
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("Page {}", index + 1));
+            let svg = page
+                .get("svg")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .ok_or_else(|| {
+                    ControlError::new(
+                        "DOCUMENT_NOT_AVAILABLE",
+                        "document svg export page is missing svg text",
+                    )
+                })?;
+
+            Ok(json!({
+                "id": id,
+                "name": name,
+                "svg": svg
+            }))
+        })
+        .collect::<Result<Vec<_>, ControlError>>()?;
+
+    let timestamp = value
+        .get("exportedAt")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    Ok(json!({
+        "bridgeState": {
+            "bridgeReady": state.bridge_ready,
+            "frameReady": state.frame_ready,
+            "route": state.route,
+            "sessionId": state.session_id
+        },
+        "pages": normalized_pages,
+        "timestamp": timestamp
+    }))
+}
+
 pub fn hash_xml(xml: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(xml.as_bytes());
@@ -184,12 +278,46 @@ pub fn hash_xml(xml: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::hash_xml;
+    use super::{build_svg_pages_payload, hash_xml};
+    use crate::session_runtime::ShellState;
+    use serde_json::json;
 
     #[test]
     fn hashes_xml_with_sha256_prefix() {
         let hash = hash_xml("<mxGraphModel />");
         assert!(hash.starts_with("sha256:"));
         assert!(hash.len() > "sha256:".len());
+    }
+
+    #[test]
+    fn builds_svg_pages_payload_with_bridge_metadata() {
+        let payload = build_svg_pages_payload(
+            json!({
+                "exportedAt": "2026-03-17T00:00:00.000Z",
+                "pages": [
+                    {
+                        "id": "page-1",
+                        "name": "Page 1",
+                        "svg": "<svg><text>one</text></svg>"
+                    }
+                ]
+            }),
+            &ShellState {
+                bootstrap_error: None,
+                bridge_ready: true,
+                conversation_loaded: true,
+                document_loaded: true,
+                frame_ready: true,
+                last_event: "ready".to_string(),
+                route: "/session?id=sess-1".to_string(),
+                session_id: "sess-1".to_string(),
+            },
+        )
+        .expect("svg payload should build");
+
+        assert_eq!(payload["pages"][0]["id"], "page-1");
+        assert_eq!(payload["pages"][0]["svg"], "<svg><text>one</text></svg>");
+        assert_eq!(payload["bridgeState"]["sessionId"], "sess-1");
+        assert_eq!(payload["timestamp"], "2026-03-17T00:00:00.000Z");
     }
 }

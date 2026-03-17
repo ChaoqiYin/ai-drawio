@@ -51,6 +51,22 @@ pub fn build_cli_command() -> Command {
                         ),
                 )
                 .subcommand(
+                    Command::new("document.svg")
+                        .about("Export the current draw.io document as per-page SVG")
+                        .arg(Arg::new("session").long("session").value_name("session-id"))
+                        .arg(
+                            Arg::new("session-title")
+                                .long("session-title")
+                                .value_name("session-title")
+                                .conflicts_with("session"),
+                        )
+                        .arg(
+                            Arg::new("output-file")
+                                .long("output-file")
+                                .value_name("path"),
+                        ),
+                )
+                .subcommand(
                     Command::new("document.apply")
                         .about("Apply a draw.io document to the resolved session")
                         .arg(

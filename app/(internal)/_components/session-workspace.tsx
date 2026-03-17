@@ -185,6 +185,14 @@ type ShellWindow = Window &
           appliedAt: string;
           xml: string;
         }>;
+        exportSvgPages: () => Promise<{
+          exportedAt: string;
+          pages: Array<{
+            id: string;
+            name: string;
+            svg: string;
+          }>;
+        }>;
         getDocument: () => Promise<{ readAt: string; xml: string }>;
       };
       getFrameWindow?: () => Window;
@@ -208,6 +216,22 @@ function formatDate(value: string): string {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
+}
+
+function decodeSvgDataUri(svgDataUri: string): string {
+  const [header, encoded = ''] = svgDataUri.split(',', 2);
+
+  if (!header.startsWith('data:image/svg+xml')) {
+    throw new Error('invalid svg data uri');
+  }
+
+  if (header.includes(';base64')) {
+    const binary = window.atob(encoded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }
+
+  return decodeURIComponent(encoded);
 }
 
 function parseFrameMessage(input: unknown): FrameMessage | null {
@@ -890,6 +914,39 @@ export default function SessionWorkspace() {
       return normalizeCanvasHistoryPreviewPages((result as { pages?: unknown } | null)?.pages);
     }
 
+    async function buildSvgPagesForExport(xml: string): Promise<
+      Array<{
+        id: string;
+        name: string;
+        svg: string;
+      }>
+    > {
+      const pages = await buildSvgPreviewPagesForHistory(xml);
+
+      return pages.map((page) => ({
+        id: page.id,
+        name: page.name,
+        svg: decodeSvgDataUri(page.svgDataUri),
+      }));
+    }
+
+    async function exportCurrentSvgPages(): Promise<{
+      exportedAt: string;
+      pages: Array<{
+        id: string;
+        name: string;
+        svg: string;
+      }>;
+    }> {
+      const xml = await readCurrentDocumentXml();
+      const pages = await buildSvgPagesForExport(xml);
+
+      return {
+        exportedAt: new Date().toISOString(),
+        pages,
+      };
+    }
+
     async function applyDocumentWithHistory({
       historyLabel = '快照',
       historySource = 'ai-pre-apply',
@@ -1128,6 +1185,10 @@ export default function SessionWorkspace() {
             readAt: new Date().toISOString(),
             xml,
           };
+        },
+
+        async exportSvgPages() {
+          return exportCurrentSvgPages();
         },
       },
 

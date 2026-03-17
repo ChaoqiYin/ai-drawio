@@ -15,6 +15,7 @@ pub enum CommandKind {
     CanvasDocumentApply,
     CanvasDocumentGet,
     CanvasDocumentRestore,
+    CanvasDocumentSvg,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -67,6 +68,7 @@ impl ControlRequest {
             "canvas.document.apply" => Ok(CommandKind::CanvasDocumentApply),
             "canvas.document.get" => Ok(CommandKind::CanvasDocumentGet),
             "canvas.document.restore" => Ok(CommandKind::CanvasDocumentRestore),
+            "canvas.document.svg" => Ok(CommandKind::CanvasDocumentSvg),
             "conversation.create" => Ok(CommandKind::ConversationCreate),
             "open" => Ok(CommandKind::Open),
             "session.ensure" => Ok(CommandKind::SessionEnsure),
@@ -165,7 +167,10 @@ impl ControlRequest {
                     ));
                 }
             }
-            CommandKind::CanvasDocumentGet | CommandKind::SessionGet | CommandKind::SessionOpen => {
+            CommandKind::CanvasDocumentGet
+            | CommandKind::CanvasDocumentSvg
+            | CommandKind::SessionGet
+            | CommandKind::SessionOpen => {
                 let has_title = self
                     .payload
                     .get("title")
@@ -302,6 +307,16 @@ mod tests {
         let command = request.validate().expect("request should validate");
 
         assert_eq!(command, CommandKind::CanvasDocumentRestore);
+    }
+
+    #[test]
+    fn validates_document_svg_requests() {
+        let mut request = base_request("canvas.document.svg");
+        request.session_id = Some("sess-1".to_string());
+
+        let command = request.validate().expect("request should validate");
+
+        assert_eq!(command, CommandKind::CanvasDocumentSvg);
     }
 
     #[test]

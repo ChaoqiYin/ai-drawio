@@ -26,6 +26,8 @@ The desktop app starts on a local AI conversation history page and opens draw.io
   Runs `tauri dev`, which triggers the static frontend build before launching the desktop app.
 - `npm run build`
   Runs `tauri build`, which also rebuilds the static frontend first.
+- `npm run build:macos:dmg`
+  Runs the Tauri macOS DMG bundler for drag-and-drop installation of `AI Drawio.app`.
 - `npm run build:macos:pkg`
   Builds the macOS `.app`, then wraps it in a local installer package at `src-tauri/target/release/bundle/pkg/ai-drawio-installer.pkg`.
 
@@ -39,11 +41,13 @@ The desktop app starts on a local AI conversation history page and opens draw.io
 ## CLI Behavior
 
 - The packaged macOS binary is named `ai-drawio`.
+- The DMG install flow is drag-and-drop first, then explicit in-app registration from Settings.
+- Use `Install ai-drawio into PATH` from the Settings page to register `/usr/local/bin/ai-drawio`.
 - When invoked from a terminal with a CLI command, the binary behaves like a helper:
   - it connects to an already running desktop instance when possible
   - otherwise it launches a detached GUI instance, waits for the local control server, then executes the command
 - Shell completion artifacts are generated into `src-tauri/target/cli-completions/` during Rust/Tauri builds.
-- The macOS installer copies the binary link to `/usr/local/bin/ai-drawio` and installs completions into:
+- The in-app PATH installer creates the binary link at `/usr/local/bin/ai-drawio` and installs completions into:
   - `/usr/local/share/zsh/site-functions/_ai-drawio`
   - `/usr/local/etc/bash_completion.d/ai-drawio`
   - `/usr/local/share/fish/vendor_completions.d/ai-drawio.fish`

@@ -9,8 +9,10 @@
     "cli": "node --experimental-strip-types ./scripts/ai-drawio-cli.ts",
     "web:dev": "next dev --hostname 127.0.0.1 --port 3001",
     "build:web": "node --experimental-strip-types ./scripts/prepare-drawio.ts && next build",
-    "dev": "tauri dev",
-    "build": "tauri build",
+    "tauri:icons": "tauri icon ./assets/ai-drawio.svg --output ./src-tauri/icons",
+    "dev": "npm run tauri:icons && tauri dev",
+    "build": "npm run tauri:icons && tauri build",
+    "build:macos:dmg": "sh ./scripts/build-macos-cli-dmg.sh",
     "build:macos:pkg": "./scripts/build-macos-cli-pkg.sh",
     "tauri": "tauri",
     "test:node": "node --experimental-strip-types --test tests/*.ts"

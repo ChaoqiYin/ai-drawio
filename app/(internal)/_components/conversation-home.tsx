@@ -244,6 +244,14 @@ export default function ConversationHome() {
     }
   }
 
+  function openSettings(): void {
+    if (isNavigating) {
+      return;
+    }
+
+    router.push("/settings");
+  }
+
   return (
     <Layout className={shellClassName}>
       <Content className="relative z-[1]">
@@ -265,6 +273,9 @@ export default function ConversationHome() {
                   onClick={handleCreateConversation}
                 >
                   {isCreatingConversation || isPending ? '正在打开...' : '创建本地会话'}
+                </Button>
+                <Button disabled={isNavigating || isClearingAll} onClick={openSettings}>
+                  设置
                 </Button>
                 <Popconfirm
                   title="确认清空全部本地数据吗？"

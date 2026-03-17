@@ -22,6 +22,13 @@ export interface ParsedCommand {
   sessionId: string | null;
 }
 
+export interface SvgPageResult {
+  id: string;
+  name: string;
+  outputPath?: string;
+  svg: string;
+}
+
 export interface ControlEnvelope {
   command: string;
   payload: {
@@ -45,6 +52,46 @@ export interface SessionResolutionCommand {
     title?: string;
   };
   sessionId: string | null;
+}
+
+function sanitizeSvgPageName(name: string): string {
+  return name
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/-+/g, "-")
+    .trim();
+}
+
+function buildSvgPageFileName(index: number, pageName: string): string {
+  const pageNumber = String(index + 1).padStart(2, "0");
+  const sanitizedName = sanitizeSvgPageName(pageName);
+
+  if (!sanitizedName) {
+    return `page-${pageNumber}.svg`;
+  }
+
+  return `${pageNumber}-${sanitizedName}.svg`;
+}
+
+export async function writeSvgPagesToDirectory(
+  outputDir: string,
+  pages: SvgPageResult[]
+): Promise<SvgPageResult[]> {
+  await fs.mkdir(outputDir, { recursive: true });
+
+  return Promise.all(
+    pages.map(async (page, index) => {
+      const fileName = buildSvgPageFileName(index, page.name);
+      const outputPath = `${outputDir}/${fileName}`;
+      await fs.writeFile(outputPath, page.svg, "utf8");
+
+      return {
+        ...page,
+        outputPath
+      };
+    })
+  );
 }
 
 function buildBaseEnvelope(
@@ -446,6 +493,49 @@ export function requestControl(
   });
 }
 
+async function maybeWriteCliOutput(
+  parsedCommand: ParsedCommand,
+  response: Record<string, any>
+): Promise<Record<string, any>> {
+  if (!parsedCommand.outputFile || !response.ok) {
+    return response;
+  }
+
+  if (
+    parsedCommand.command === "canvas.document.get" &&
+    typeof response.data?.xml === "string"
+  ) {
+    await fs.writeFile(parsedCommand.outputFile, response.data.xml, "utf8");
+    return response;
+  }
+
+  if (
+    parsedCommand.command === "canvas.document.svg" &&
+    Array.isArray(response.data?.pages)
+  ) {
+    const pages = response.data.pages.filter(
+      (page: unknown): page is SvgPageResult =>
+        typeof page === "object" &&
+        page !== null &&
+        typeof (page as SvgPageResult).id === "string" &&
+        typeof (page as SvgPageResult).name === "string" &&
+        typeof (page as SvgPageResult).svg === "string"
+    );
+
+    const writtenPages = await writeSvgPagesToDirectory(parsedCommand.outputFile, pages);
+
+    return {
+      ...response,
+      data: {
+        ...(response.data || {}),
+        pages: writtenPages
+      }
+    };
+  }
+
+  return response;
+}
+
 async function waitForControlServer(timeoutMs = 20_000): Promise<Record<string, any>> {
   const deadline = Date.now() + timeoutMs;
 
@@ -550,18 +640,12 @@ export async function executeCli(argv: string[]): Promise<Record<string, any>> {
 
     const response = await requestControl(envelope);
 
-    if (
-      parsedCommand.outputFile &&
-      response.ok &&
-      typeof response.data?.xml === "string"
-    ) {
-      await fs.writeFile(parsedCommand.outputFile, response.data.xml, "utf8");
-    }
+    const nextResponse = await maybeWriteCliOutput(parsedCommand, response);
 
     return {
-      ...response,
+      ...nextResponse,
       data: {
-        ...(response.data || {}),
+        ...(nextResponse.data || {}),
         launched
       }
     };
@@ -569,15 +653,7 @@ export async function executeCli(argv: string[]): Promise<Record<string, any>> {
 
   const response = await requestControl(await buildControlEnvelope(parsedCommand));
 
-  if (
-    parsedCommand.outputFile &&
-    response.ok &&
-    typeof response.data?.xml === "string"
-  ) {
-    await fs.writeFile(parsedCommand.outputFile, response.data.xml, "utf8");
-  }
-
-  return response;
+  return maybeWriteCliOutput(parsedCommand, response);
 }
 
 async function main(): Promise<void> {

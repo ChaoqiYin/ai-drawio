@@ -1,0 +1,172 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Alert, Button, Card, Descriptions, Layout, Space, Tag, Typography } from "@arco-design/web-react";
+
+import {
+  getCliInstallStatus,
+  installCliToPath,
+  type CliInstallResult,
+  type CliInstallStatus,
+} from "../_lib/tauri-cli-install";
+
+const shellClassName =
+  "internal-app-shell mx-auto flex min-h-screen w-full max-w-[1480px] flex-col px-3! py-3! md:px-5! md:py-5!";
+const pageCardStyle = {
+  borderRadius: 8,
+  backdropFilter: "blur(18px)",
+} as const;
+const { Content } = Layout;
+const { Paragraph, Title, Text } = Typography;
+
+function getStatusLabel(status: CliInstallStatus["status"]): string {
+  switch (status) {
+    case "installed":
+      return "已安装";
+    case "mismatched":
+      return "安装目标异常";
+    case "error":
+      return "状态异常";
+    case "not_installed":
+    default:
+      return "未安装";
+  }
+}
+
+function getStatusColor(status: CliInstallStatus["status"]): "green" | "orange" | "red" | "gray" {
+  switch (status) {
+    case "installed":
+      return "green";
+    case "mismatched":
+      return "orange";
+    case "error":
+      return "red";
+    case "not_installed":
+    default:
+      return "gray";
+  }
+}
+
+export default function SettingsPage() {
+  const [status, setStatus] = useState<CliInstallStatus>({
+    status: "not_installed",
+    commandPath: "/usr/local/bin/ai-drawio",
+    targetPath: null,
+    completionInstalled: false,
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isInstalling, setIsInstalling] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<CliInstallResult | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStatus() {
+      setIsLoading(true);
+      setError("");
+
+      try {
+        const nextStatus = await getCliInstallStatus();
+
+        if (!cancelled) {
+          setStatus(nextStatus);
+        }
+      } catch (nextError) {
+        if (!cancelled) {
+          setError(nextError instanceof Error ? nextError.message : "读取 CLI 安装状态失败。");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleInstall(): Promise<void> {
+    setIsInstalling(true);
+    setError("");
+    setResult(null);
+
+    try {
+      const installResult = await installCliToPath();
+      setResult(installResult);
+      setStatus((currentStatus) => ({
+        ...currentStatus,
+        status: installResult.ok ? "installed" : currentStatus.status,
+        targetPath: installResult.targetPath,
+        commandPath: installResult.commandPath,
+        completionInstalled: installResult.completionInstalled,
+      }));
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "执行 CLI 安装失败。");
+    } finally {
+      setIsInstalling(false);
+    }
+  }
+
+  const actionLabel = status.status === "installed" ? "Reinstall ai-drawio into PATH" : "Install ai-drawio into PATH";
+
+  return (
+    <Layout className={shellClassName}>
+      <Content className="relative z-[1]">
+        <Card className="internal-panel bg-transparent" style={pageCardStyle}>
+          <Space direction="vertical" size={14} style={{ width: "100%", alignItems: "stretch" }}>
+            <Space size={10} align="center" wrap>
+              <Tag color="arcoblue">CLI Integration</Tag>
+              <Tag color={getStatusColor(status.status)}>{isLoading ? "正在读取" : getStatusLabel(status.status)}</Tag>
+            </Space>
+            <Title heading={3} style={{ margin: 0 }}>
+              CLI 集成
+            </Title>
+            <Paragraph style={{ margin: 0 }}>
+              将 <Text code>/usr/local/bin/ai-drawio</Text> 安装到系统 PATH，安装时会请求管理员权限。
+            </Paragraph>
+            <Descriptions
+              column={1}
+              data={[
+                {
+                  label: "命令路径",
+                  value: <Text code>{status.commandPath}</Text>,
+                },
+                {
+                  label: "当前状态",
+                  value: getStatusLabel(status.status),
+                },
+                {
+                  label: "当前目标",
+                  value: status.targetPath ? <Text code>{status.targetPath}</Text> : "尚未安装",
+                },
+              ]}
+              layout="inline-horizontal"
+            />
+            <Space wrap>
+              <Button type="primary" loading={isInstalling} onClick={handleInstall}>
+                {actionLabel}
+              </Button>
+            </Space>
+            <Paragraph style={{ margin: 0 }}>
+              安装完成后请在新终端执行 <Text code>ai-drawio status</Text>。如果当前终端仍未识别命令，请执行
+              <Text code>hash -r</Text> 或重新打开终端。
+            </Paragraph>
+            {result ? (
+              <Alert
+                type={result.ok ? "success" : "warning"}
+                content={result.message}
+                showIcon
+              />
+            ) : null}
+            {error ? <Alert type="error" content={error} showIcon /> : null}
+          </Space>
+        </Card>
+      </Content>
+    </Layout>
+  );
+}
