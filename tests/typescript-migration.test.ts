@@ -21,7 +21,7 @@ test("project source files follow the ts and tsx migration rules", async () => {
   assert.equal(await exists("app/(internal)/_lib/conversation-model.ts"), true);
   assert.equal(await exists("app/(internal)/_lib/conversation-store.ts"), true);
   assert.equal(await exists("scripts/prepare-drawio.ts"), true);
-  assert.equal(await exists("scripts/ai-drawio-cli.ts"), true);
+  assert.equal(await exists("scripts/ai-drawio-cli.ts"), false);
   assert.equal(await exists("tests/conversation-model.test.ts"), true);
   assert.equal(await exists("tests/typescript-migration.test.ts"), true);
 

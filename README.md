@@ -43,7 +43,7 @@ The desktop app starts on a local AI conversation history page and opens draw.io
 - Use `Install ai-drawio into PATH` from the Settings page to register `/usr/local/bin/ai-drawio`.
 - When invoked from a terminal with a CLI command, the binary behaves like a helper:
   - it connects to an already running desktop instance when possible
-  - otherwise it launches a detached GUI instance, waits for the local control server, then executes the command
+  - otherwise it returns a structured response telling the caller to open the desktop window manually
 - Shell completion artifacts are generated into `src-tauri/target/cli-completions/` during Rust/Tauri builds.
 - The in-app PATH installer creates the binary link at `/usr/local/bin/ai-drawio` and installs completions into:
   - `/usr/local/share/zsh/site-functions/_ai-drawio`
@@ -60,16 +60,22 @@ The desktop app starts on a local AI conversation history page and opens draw.io
   Automatically ensures there is a ready session detail page before reading the document.
 - `ai-drawio canvas document.get --session <conversation-id>`
   Uses a strict explicit session override.
-- `ai-drawio canvas document.apply <path>`
-  Automatically ensures there is a ready session detail page before applying the document.
+- `ai-drawio canvas document.apply '<mxfile>...</mxfile>'`
+  Treats the positional argument as inline XML content and automatically ensures there is a ready session detail page before applying the document.
+- `ai-drawio canvas document.apply --xml-file <path>`
+  Reads the XML content from a file path before applying the document.
 - `ai-drawio canvas document.apply --xml-stdin`
-  Reads the document from stdin instead of a positional file path.
+  Reads the document from stdin instead of an inline XML argument.
+- `ai-drawio canvas document.restore '<mxfile>...</mxfile>'`
+  Restores inline XML content without adding canvas history.
+- `ai-drawio canvas document.restore --xml-file <path>`
+  Reads restore XML content from a file path.
 - `--session <conversation-id>`
   Remains available as a strict override. When provided, the CLI must open and operate on that exact persisted session id, and it fails directly if the id does not exist.
 
 Default automatic flow:
 
-1. If the desktop app is not open, start it.
+1. If the desktop app is not open, the CLI returns a manual-launch prompt instead of starting it.
 2. If the app is not already on a ready session detail page, create a real persisted session and open it.
 3. If the app is already on a ready session detail page, reuse it.
 4. Perform the requested document operation.

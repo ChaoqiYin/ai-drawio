@@ -1,12 +1,8 @@
 {
   "name": "ai-drawio",
-  "bin": {
-    "ai-drawio": "./scripts/ai-drawio-cli.ts"
-  },
   "private": true,
   "type": "module",
   "scripts": {
-    "cli": "node --experimental-strip-types ./scripts/ai-drawio-cli.ts",
     "web:dev": "next dev --hostname 127.0.0.1 --port 3001",
     "build:web": "node --experimental-strip-types ./scripts/prepare-drawio.ts && next build",
     "tauri:icons": "tauri icon ./assets/ai-drawio.svg --output ./src-tauri/icons",

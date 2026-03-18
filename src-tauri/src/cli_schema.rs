@@ -3,7 +3,6 @@ use clap::{Arg, ArgAction, Command};
 pub fn build_cli_command() -> Command {
     Command::new("ai-drawio")
         .disable_help_subcommand(true)
-        .subcommand(Command::new("open").about("Focus the desktop app window"))
         .subcommand(Command::new("status").about("Inspect the running desktop shell state"))
         .subcommand(
             Command::new("conversation")
@@ -70,15 +69,25 @@ pub fn build_cli_command() -> Command {
                     Command::new("document.apply")
                         .about("Apply a draw.io document to the resolved session")
                         .arg(
-                            Arg::new("xml-file")
+                            Arg::new("xml")
                                 .index(1)
-                                .value_name("xml-file")
-                                .required_unless_present("xml-stdin"),
+                                .value_name("xml")
+                                .required_unless_present_any(["xml-file", "xml-stdin"])
+                                .conflicts_with("xml-file")
+                                .conflicts_with("xml-stdin"),
+                        )
+                        .arg(
+                            Arg::new("xml-file")
+                                .long("xml-file")
+                                .value_name("path")
+                                .conflicts_with("xml")
+                                .conflicts_with("xml-stdin"),
                         )
                         .arg(
                             Arg::new("xml-stdin")
                                 .long("xml-stdin")
                                 .action(ArgAction::SetTrue)
+                                .conflicts_with("xml")
                                 .conflicts_with("xml-file"),
                         )
                         .arg(Arg::new("session").long("session").value_name("session-id"))
@@ -98,6 +107,44 @@ pub fn build_cli_command() -> Command {
                             Arg::new("output-file")
                                 .long("output-file")
                                 .value_name("path"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("document.restore")
+                        .about("Restore a draw.io document without adding canvas history")
+                        .arg(
+                            Arg::new("xml")
+                                .index(1)
+                                .value_name("xml")
+                                .required_unless_present_any(["xml-file", "xml-stdin"])
+                                .conflicts_with("xml-file")
+                                .conflicts_with("xml-stdin"),
+                        )
+                        .arg(
+                            Arg::new("xml-file")
+                                .long("xml-file")
+                                .value_name("path")
+                                .conflicts_with("xml")
+                                .conflicts_with("xml-stdin"),
+                        )
+                        .arg(
+                            Arg::new("xml-stdin")
+                                .long("xml-stdin")
+                                .action(ArgAction::SetTrue)
+                                .conflicts_with("xml")
+                                .conflicts_with("xml-file"),
+                        )
+                        .arg(Arg::new("session").long("session").value_name("session-id"))
+                        .arg(
+                            Arg::new("session-title")
+                                .long("session-title")
+                                .value_name("session-title")
+                                .conflicts_with("session"),
+                        )
+                        .arg(
+                            Arg::new("base-version")
+                                .long("base-version")
+                                .value_name("version"),
                         ),
                 ),
         )

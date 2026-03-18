@@ -1,16 +1,14 @@
 use crate::cli_schema::build_cli_command;
-use crate::control_protocol::{CommandSource, ControlRequest, ControlResponse};
+use crate::control_protocol::{CommandSource, ControlError, ControlRequest, ControlResponse};
 use clap::ArgMatches;
 use serde_json::{json, Map, Value};
 use std::env;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const CLI_SOURCE_NAME: &str = "ai-drawio";
-const INTERNAL_GUI_ENV: &str = "AI_DRAWIO_INTERNAL_GUI";
 const CONTROL_TIMEOUT_MS: u64 = 20_000;
 const STATUS_TIMEOUT_MS: u64 = 5_000;
 
@@ -22,7 +20,6 @@ pub enum SessionLocator {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackagedCliCommand {
-    Open,
     Status,
     ConversationCreate,
     SessionList,
@@ -37,19 +34,23 @@ pub enum PackagedCliCommand {
     },
     CanvasDocumentApply {
         locator: Option<SessionLocator>,
+        xml: Option<String>,
         xml_file: Option<String>,
         xml_stdin: bool,
         base_version: Option<String>,
         prompt: Option<String>,
         output_file: Option<String>,
     },
+    CanvasDocumentRestore {
+        locator: Option<SessionLocator>,
+        xml: Option<String>,
+        xml_file: Option<String>,
+        xml_stdin: bool,
+        base_version: Option<String>,
+    },
 }
 
 pub fn maybe_run_from_env() -> Option<i32> {
-    if env::var_os(INTERNAL_GUI_ENV).is_some() {
-        return None;
-    }
-
     let args = env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() {
         return None;
@@ -95,7 +96,6 @@ pub fn parse_cli_args_from_strings(args: &[String]) -> Result<PackagedCliCommand
 
 fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
     match matches.subcommand() {
-        Some(("open", _)) => Ok(PackagedCliCommand::Open),
         Some(("status", _)) => Ok(PackagedCliCommand::Status),
         Some(("conversation", submatches)) => match submatches.subcommand() {
             Some(("create", _)) => Ok(PackagedCliCommand::ConversationCreate),
@@ -119,13 +119,26 @@ fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
             }),
             Some(("document.apply", apply_matches)) => Ok(PackagedCliCommand::CanvasDocumentApply {
                 locator: parse_optional_locator(apply_matches, "session", "session-title"),
+                xml: string_arg(apply_matches, "xml"),
                 xml_file: string_arg(apply_matches, "xml-file"),
                 xml_stdin: apply_matches.get_flag("xml-stdin"),
                 base_version: string_arg(apply_matches, "base-version"),
                 prompt: string_arg(apply_matches, "prompt"),
                 output_file: string_arg(apply_matches, "output-file"),
             }),
-            _ => Err("canvas only supports document.get, document.svg or document.apply".to_string()),
+            Some(("document.restore", restore_matches)) => {
+                Ok(PackagedCliCommand::CanvasDocumentRestore {
+                    locator: parse_optional_locator(restore_matches, "session", "session-title"),
+                    xml: string_arg(restore_matches, "xml"),
+                    xml_file: string_arg(restore_matches, "xml-file"),
+                    xml_stdin: restore_matches.get_flag("xml-stdin"),
+                    base_version: string_arg(restore_matches, "base-version"),
+                })
+            }
+            _ => Err(
+                "canvas only supports document.get, document.svg, document.apply or document.restore"
+                    .to_string(),
+            ),
         },
         _ => Err("missing command".to_string()),
     }
@@ -136,6 +149,7 @@ pub fn build_resolution_request(command: &PackagedCliCommand) -> Option<ControlR
         PackagedCliCommand::CanvasDocumentGet { locator, .. } => locator.as_ref(),
         PackagedCliCommand::CanvasDocumentSvg { locator, .. } => locator.as_ref(),
         PackagedCliCommand::CanvasDocumentApply { locator, .. } => locator.as_ref(),
+        PackagedCliCommand::CanvasDocumentRestore { locator, .. } => locator.as_ref(),
         _ => return None,
     };
 
@@ -166,7 +180,6 @@ pub fn build_request_for_command(
     session_id: Option<String>,
 ) -> Result<ControlRequest, String> {
     match command {
-        PackagedCliCommand::Open => Ok(build_request("open", None, json!({}), CONTROL_TIMEOUT_MS)),
         PackagedCliCommand::Status => Ok(build_request(
             "status",
             None,
@@ -212,21 +225,23 @@ pub fn build_request_for_command(
             CONTROL_TIMEOUT_MS,
         )),
         PackagedCliCommand::CanvasDocumentApply {
+            xml,
             xml_file,
             xml_stdin,
             base_version,
             prompt,
             ..
         } => {
-            let xml = if *xml_stdin {
+            let xml = if let Some(xml) = xml {
+                xml.to_string()
+            } else if *xml_stdin {
                 read_stdin()?
             } else if let Some(xml_file) = xml_file {
                 fs::read_to_string(xml_file)
                     .map_err(|error| format!("failed to read xml file '{xml_file}': {error}"))?
             } else {
                 return Err(
-                    "canvas document.apply requires exactly one xml input mode: <xml-file> or --xml-stdin"
-                        .to_string(),
+                    "canvas document.apply requires exactly one xml input mode: <xml>, --xml-file <path>, or --xml-stdin".to_string(),
                 );
             };
 
@@ -250,73 +265,109 @@ pub fn build_request_for_command(
                 CONTROL_TIMEOUT_MS,
             ))
         }
+        PackagedCliCommand::CanvasDocumentRestore {
+            xml,
+            xml_file,
+            xml_stdin,
+            base_version,
+            ..
+        } => {
+            let xml = if let Some(xml) = xml {
+                xml.to_string()
+            } else if *xml_stdin {
+                read_stdin()?
+            } else if let Some(xml_file) = xml_file {
+                fs::read_to_string(xml_file)
+                    .map_err(|error| format!("failed to read xml file '{xml_file}': {error}"))?
+            } else {
+                return Err(
+                    "canvas document.restore requires exactly one xml input mode: <xml>, --xml-file <path>, or --xml-stdin".to_string(),
+                );
+            };
+
+            let mut payload = Map::from_iter([("xml".to_string(), Value::String(xml))]);
+
+            if let Some(base_version) = base_version {
+                payload.insert(
+                    "baseVersion".to_string(),
+                    Value::String(base_version.to_string()),
+                );
+            }
+
+            Ok(build_request(
+                "canvas.document.restore",
+                session_id,
+                Value::Object(payload),
+                CONTROL_TIMEOUT_MS,
+            ))
+        }
     }
 }
 
 pub fn execute_cli(command: &PackagedCliCommand) -> Result<ControlResponse, String> {
-    let launched = ensure_desktop_app()?;
+    if !requires_running_app(command) {
+        return Ok(match send_status_request() {
+            Ok(response) => response,
+            Err(_) => build_status_not_running_response(),
+        });
+    }
 
-    let mut response = if let Some(resolution_request) = build_resolution_request(command) {
+    if send_status_request().is_err() {
+        return Ok(build_app_not_running_response(command_name(command)));
+    }
+
+    if let Some(resolution_request) = build_resolution_request(command) {
         let resolution_response = send_control_request(&resolution_request)?;
         if !resolution_response.ok {
-            resolution_response
+            Ok(resolution_response)
         } else {
             let session_id = extract_resolved_session_id(&resolution_response)?;
             let request = build_request_for_command(command, Some(session_id))?;
             let mut response = send_control_request(&request)?;
             maybe_write_output_file(command, &mut response)?;
-            response
+            Ok(response)
         }
     } else {
         let request = build_request_for_command(command, None)?;
         let mut response = send_control_request(&request)?;
         maybe_write_output_file(command, &mut response)?;
-        response
-    };
-
-    inject_launched(&mut response, launched);
-
-    Ok(response)
-}
-
-fn ensure_desktop_app() -> Result<bool, String> {
-    if send_control_request(&build_request("status", None, json!({}), STATUS_TIMEOUT_MS)).is_ok() {
-        return Ok(false);
+        Ok(response)
     }
-
-    spawn_gui_process()?;
-    wait_for_control_server(Duration::from_millis(CONTROL_TIMEOUT_MS))?;
-    Ok(true)
 }
 
-fn spawn_gui_process() -> Result<(), String> {
-    let current_exe =
-        env::current_exe().map_err(|error| format!("failed to locate current executable: {error}"))?;
-
-    Command::new(current_exe)
-        .env(INTERNAL_GUI_ENV, "1")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| format!("failed to launch desktop app: {error}"))
+fn requires_running_app(command: &PackagedCliCommand) -> bool {
+    !matches!(command, PackagedCliCommand::Status)
 }
 
-fn wait_for_control_server(timeout: Duration) -> Result<(), String> {
-    let started_at = SystemTime::now();
+fn send_status_request() -> Result<ControlResponse, String> {
+    send_control_request(&build_request("status", None, json!({}), STATUS_TIMEOUT_MS))
+}
 
-    loop {
-        if send_control_request(&build_request("status", None, json!({}), STATUS_TIMEOUT_MS)).is_ok() {
-            return Ok(());
-        }
+fn build_status_not_running_response() -> ControlResponse {
+    build_success_response(
+        "status",
+        json!({
+            "address": crate::control_server::CONTROL_ADDR,
+            "running": false,
+            "shell": null
+        }),
+    )
+}
 
-        let elapsed = started_at.elapsed().unwrap_or_default();
-        if elapsed >= timeout {
-            return Err("desktop control server did not become ready in time".to_string());
-        }
-
-        std::thread::sleep(Duration::from_millis(300));
+fn build_app_not_running_response(command: &str) -> ControlResponse {
+    ControlResponse {
+        command: command.to_string(),
+        data: Some(json!({
+            "address": crate::control_server::CONTROL_ADDR,
+            "running": false
+        })),
+        error: Some(ControlError::new(
+            "APP_NOT_RUNNING",
+            "AI Drawio is not running.",
+        )),
+        ok: false,
+        request_id: next_request_id(),
+        session_id: None,
     }
 }
 
@@ -475,17 +526,6 @@ fn build_svg_page_file_name(index: usize, page_name: &str) -> String {
     }
 }
 
-fn inject_launched(response: &mut ControlResponse, launched: bool) {
-    let mut object = match response.data.take() {
-        Some(Value::Object(object)) => object,
-        Some(other) => Map::from_iter([("value".to_string(), other)]),
-        None => Map::new(),
-    };
-
-    object.insert("launched".to_string(), Value::Bool(launched));
-    response.data = Some(Value::Object(object));
-}
-
 fn read_stdin() -> Result<String, String> {
     let mut buffer = String::new();
     std::io::stdin()
@@ -511,6 +551,30 @@ fn build_request(
             r#type: "cli".to_string(),
         }),
         timeout_ms,
+    }
+}
+
+fn build_success_response(command: &str, data: Value) -> ControlResponse {
+    ControlResponse {
+        command: command.to_string(),
+        data: Some(data),
+        error: None,
+        ok: true,
+        request_id: next_request_id(),
+        session_id: None,
+    }
+}
+
+fn command_name(command: &PackagedCliCommand) -> &'static str {
+    match command {
+        PackagedCliCommand::Status => "status",
+        PackagedCliCommand::ConversationCreate => "conversation.create",
+        PackagedCliCommand::SessionList => "session.list",
+        PackagedCliCommand::SessionOpen { .. } => "session.open",
+        PackagedCliCommand::CanvasDocumentGet { .. } => "canvas.document.get",
+        PackagedCliCommand::CanvasDocumentSvg { .. } => "canvas.document.svg",
+        PackagedCliCommand::CanvasDocumentApply { .. } => "canvas.document.apply",
+        PackagedCliCommand::CanvasDocumentRestore { .. } => "canvas.document.restore",
     }
 }
 
@@ -567,8 +631,9 @@ fn parse_optional_locator(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_request_for_command, build_resolution_request, maybe_write_output_file,
-        parse_cli_args, PackagedCliCommand, SessionLocator,
+        build_app_not_running_response, build_request_for_command, build_resolution_request,
+        build_status_not_running_response, maybe_write_output_file, parse_cli_args,
+        requires_running_app, PackagedCliCommand, SessionLocator,
     };
     use crate::control_protocol::ControlResponse;
     use serde_json::json;
@@ -602,14 +667,45 @@ mod tests {
     }
 
     #[test]
-    fn parses_document_apply_with_positional_xml_file() {
-        let command = parse_cli_args(&["canvas", "document.apply", "./next.drawio"])
-            .expect("document apply should parse");
+    fn rejects_open_command() {
+        let error = parse_cli_args(&["open"]).expect_err("open command should be removed");
+
+        assert!(error.contains("unrecognized") || error.contains("unexpected"));
+    }
+
+    #[test]
+    fn parses_document_apply_with_positional_xml_content() {
+        let command = parse_cli_args(&[
+            "canvas",
+            "document.apply",
+            "<mxfile><diagram id='1'>inline</diagram></mxfile>",
+        ])
+        .expect("document apply should parse");
 
         assert_eq!(
             command,
             PackagedCliCommand::CanvasDocumentApply {
                 locator: None,
+                xml: Some("<mxfile><diagram id='1'>inline</diagram></mxfile>".to_string()),
+                xml_file: None,
+                xml_stdin: false,
+                base_version: None,
+                prompt: None,
+                output_file: None
+            }
+        );
+    }
+
+    #[test]
+    fn parses_document_apply_with_xml_file_flag() {
+        let command = parse_cli_args(&["canvas", "document.apply", "--xml-file", "./next.drawio"])
+            .expect("document apply with xml file should parse");
+
+        assert_eq!(
+            command,
+            PackagedCliCommand::CanvasDocumentApply {
+                locator: None,
+                xml: None,
                 xml_file: Some("./next.drawio".to_string()),
                 xml_stdin: false,
                 base_version: None,
@@ -628,11 +724,33 @@ mod tests {
             command,
             PackagedCliCommand::CanvasDocumentApply {
                 locator: None,
+                xml: None,
                 xml_file: None,
                 xml_stdin: true,
                 base_version: None,
                 prompt: None,
                 output_file: None
+            }
+        );
+    }
+
+    #[test]
+    fn parses_document_restore_with_positional_xml_content() {
+        let command = parse_cli_args(&[
+            "canvas",
+            "document.restore",
+            "<mxfile><diagram id='1'>restore</diagram></mxfile>",
+        ])
+        .expect("document restore should parse");
+
+        assert_eq!(
+            command,
+            PackagedCliCommand::CanvasDocumentRestore {
+                locator: None,
+                xml: Some("<mxfile><diagram id='1'>restore</diagram></mxfile>".to_string()),
+                xml_file: None,
+                xml_stdin: false,
+                base_version: None,
             }
         );
     }
@@ -656,7 +774,7 @@ mod tests {
         let error = parse_cli_args(&[
             "canvas",
             "document.apply",
-            "./next.drawio",
+            "<mxfile><diagram id='1'>inline</diagram></mxfile>",
             "--xml-stdin",
         ])
         .expect_err("mixed xml input modes must fail");
@@ -694,7 +812,8 @@ mod tests {
     fn builds_session_open_resolution_for_title_locator() {
         let request = build_resolution_request(&PackagedCliCommand::CanvasDocumentApply {
             locator: Some(SessionLocator::Title("Alpha".to_string())),
-            xml_file: Some("./next.drawio".to_string()),
+            xml: Some("<mxfile><diagram id='1'>inline</diagram></mxfile>".to_string()),
+            xml_file: None,
             xml_stdin: false,
             base_version: None,
             prompt: None,
@@ -705,6 +824,37 @@ mod tests {
         assert_eq!(request.command, "session.open");
         assert_eq!(request.payload, json!({ "title": "Alpha" }));
         assert_eq!(request.session_id, None);
+    }
+
+    #[test]
+    fn builds_document_restore_request_with_base_version() {
+        let restore_file = std::env::temp_dir().join(format!(
+            "ai-drawio-restore-{}.drawio",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        fs::write(&restore_file, "<mxfile />").expect("restore fixture should be written");
+
+        let request = build_request_for_command(
+            &PackagedCliCommand::CanvasDocumentRestore {
+                locator: None,
+                xml: None,
+                xml_file: Some(restore_file.display().to_string()),
+                xml_stdin: false,
+                base_version: Some("sha256:restore".to_string()),
+            },
+            Some("sess-restore".to_string()),
+        )
+        .expect("document restore request should build");
+
+        assert_eq!(request.command, "canvas.document.restore");
+        assert_eq!(request.session_id, Some("sess-restore".to_string()));
+        assert_eq!(request.payload.get("baseVersion"), Some(&json!("sha256:restore")));
+        assert!(request.payload.get("xml").is_some());
+
+        let _ = fs::remove_file(restore_file);
     }
 
     #[test]
@@ -769,5 +919,78 @@ mod tests {
         assert!(output_dir.join("01-首页-流程图.svg").exists());
 
         let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[test]
+    fn status_not_running_response_reports_manual_launch_requirement() {
+        let response = build_status_not_running_response();
+
+        assert_eq!(response.command, "status");
+        assert!(response.ok);
+        assert_eq!(
+            response.data.as_ref().and_then(|value| value.get("running")),
+            Some(&json!(false))
+        );
+        assert_eq!(response.data.as_ref().and_then(|value| value.get("shell")), Some(&json!(null)));
+        assert_eq!(response.data.as_ref().and_then(|value| value.get("manualLaunchRequired")), None);
+    }
+
+    #[test]
+    fn app_not_running_response_returns_cli_error_without_user_prompt_text() {
+        let response = build_app_not_running_response("canvas.document.get");
+
+        assert_eq!(response.command, "canvas.document.get");
+        assert!(!response.ok);
+        assert_eq!(
+            response.error.as_ref().map(|error| error.code.as_str()),
+            Some("APP_NOT_RUNNING")
+        );
+        assert_eq!(
+            response.error.as_ref().map(|error| error.message.as_str()),
+            Some("AI Drawio is not running.")
+        );
+        assert_eq!(response.data.as_ref().and_then(|value| value.get("manualLaunchRequired")), None);
+        assert_eq!(response.data.as_ref().and_then(|value| value.get("message")), None);
+    }
+
+    #[test]
+    fn all_non_status_commands_require_a_running_desktop_app() {
+        let commands = [
+            PackagedCliCommand::ConversationCreate,
+            PackagedCliCommand::SessionList,
+            PackagedCliCommand::SessionOpen {
+                locator: SessionLocator::Id("sess-1".to_string()),
+            },
+            PackagedCliCommand::CanvasDocumentGet {
+                locator: None,
+                output_file: None,
+            },
+            PackagedCliCommand::CanvasDocumentSvg {
+                locator: None,
+                output_file: None,
+            },
+            PackagedCliCommand::CanvasDocumentApply {
+                locator: None,
+                xml: Some("<mxfile />".to_string()),
+                xml_file: None,
+                xml_stdin: false,
+                base_version: None,
+                prompt: None,
+                output_file: None,
+            },
+            PackagedCliCommand::CanvasDocumentRestore {
+                locator: None,
+                xml: Some("<mxfile />".to_string()),
+                xml_file: None,
+                xml_stdin: false,
+                base_version: None,
+            },
+        ];
+
+        for command in commands {
+            assert!(requires_running_app(&command));
+        }
+
+        assert!(!requires_running_app(&PackagedCliCommand::Status));
     }
 }

@@ -6,7 +6,6 @@ pub const DEFAULT_TIMEOUT_MS: u64 = 15_000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandKind {
     ConversationCreate,
-    Open,
     SessionEnsure,
     SessionGet,
     SessionList,
@@ -70,7 +69,6 @@ impl ControlRequest {
             "canvas.document.restore" => Ok(CommandKind::CanvasDocumentRestore),
             "canvas.document.svg" => Ok(CommandKind::CanvasDocumentSvg),
             "conversation.create" => Ok(CommandKind::ConversationCreate),
-            "open" => Ok(CommandKind::Open),
             "session.ensure" => Ok(CommandKind::SessionEnsure),
             "session.get" => Ok(CommandKind::SessionGet),
             "session.list" => Ok(CommandKind::SessionList),
@@ -183,7 +181,6 @@ impl ControlRequest {
                 }
             }
             CommandKind::ConversationCreate
-            | CommandKind::Open
             | CommandKind::SessionEnsure
             | CommandKind::SessionList
             | CommandKind::Status => {}
@@ -260,6 +257,14 @@ mod tests {
     fn rejects_unsupported_commands() {
         let request = base_request("canvas.unknown");
         let error = request.validate().expect_err("unsupported command must fail");
+
+        assert_eq!(error.code, "UNSUPPORTED_COMMAND");
+    }
+
+    #[test]
+    fn rejects_open_command() {
+        let request = base_request("open");
+        let error = request.validate().expect_err("open command must fail");
 
         assert_eq!(error.code, "UNSUPPORTED_COMMAND");
     }

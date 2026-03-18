@@ -66,12 +66,6 @@ fn handle_request(app: &AppHandle, request: ControlRequest) -> ControlResponse {
     let bridge_state = app.state::<ScriptResultBridgeState>();
 
     let result = match command_kind {
-        CommandKind::Open => session_runtime::focus_main_window(app).map(|_| {
-            json!({
-                "address": CONTROL_ADDR,
-                "running": true
-            })
-        }),
         CommandKind::ConversationCreate => {
             session_runtime::create_conversation(app, &bridge_state, timeout)
         }

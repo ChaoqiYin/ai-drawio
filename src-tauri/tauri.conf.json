@@ -63,9 +63,6 @@
     "cli": {
       "description": "AI Drawio packaged desktop command line interface",
       "subcommands": {
-        "open": {
-          "description": "Focus the desktop app window"
-        },
         "status": {
           "description": "Inspect the running desktop shell state"
         },
@@ -127,8 +124,13 @@
               "description": "Apply a draw.io document to the resolved session",
               "args": [
                 {
-                  "name": "xml-file",
+                  "name": "xml",
                   "index": 1,
+                  "required": false
+                },
+                {
+                  "name": "xml-file",
+                  "takesValue": true,
                   "required": false
                 },
                 {
@@ -158,6 +160,41 @@
                 },
                 {
                   "name": "output-file",
+                  "takesValue": true,
+                  "required": false
+                }
+              ]
+            },
+            "document.restore": {
+              "description": "Restore a draw.io document without adding canvas history",
+              "args": [
+                {
+                  "name": "xml",
+                  "index": 1,
+                  "required": false
+                },
+                {
+                  "name": "xml-file",
+                  "takesValue": true,
+                  "required": false
+                },
+                {
+                  "name": "xml-stdin",
+                  "takesValue": false,
+                  "required": false
+                },
+                {
+                  "name": "session",
+                  "takesValue": true,
+                  "required": false
+                },
+                {
+                  "name": "session-title",
+                  "takesValue": true,
+                  "required": false
+                },
+                {
+                  "name": "base-version",
                   "takesValue": true,
                   "required": false
                 }

@@ -38,6 +38,7 @@ test("packaged tauri cli wires plugin, parser, and completion generation", async
   assert.match(packagedCliSource, /document\.svg/);
   assert.match(packagedCliSource, /session open <session-id>|session-id/);
   assert.match(packagedCliSource, /xml-stdin/);
+  assert.doesNotMatch(packagedCliSource, /\bPackagedCliCommand::Open\b/);
 });
 
 test("package scripts keep direct tauri build entrypoints without wrapper shell scripts", async () => {
@@ -49,8 +50,11 @@ test("package scripts keep direct tauri build entrypoints without wrapper shell 
 
   await assert.rejects(() => access(new URL("../scripts/build-macos-cli-dmg.sh", import.meta.url)));
   await assert.rejects(() => access(new URL("../scripts/build-macos-cli-pkg.sh", import.meta.url)));
+  await assert.rejects(() => access(new URL("../scripts/ai-drawio-cli.ts", import.meta.url)));
   assert.doesNotMatch(packageJson, /"build:macos:dmg"\s*:/);
   assert.doesNotMatch(packageJson, /"build:macos:pkg"\s*:/);
+  assert.doesNotMatch(packageJson, /"bin"\s*:\s*\{/);
+  assert.doesNotMatch(packageJson, /"cli"\s*:\s*"node --experimental-strip-types \.\/scripts\/ai-drawio-cli\.ts"/);
   assert.match(packageJson, /"build"\s*:\s*"[^"]*tauri build"/);
   assert.match(tauriConfig, /"targets"\s*:\s*"dmg"|\"targets\"\s*:\s*\[\s*\"dmg\"\s*\]/);
   assert.match(tauriConfig, /"SharedSupport\/cli-completions\/_ai-drawio"/);
@@ -58,6 +62,7 @@ test("package scripts keep direct tauri build entrypoints without wrapper shell 
   assert.match(tauriConfig, /"SharedSupport\/cli-completions\/ai-drawio\.fish"/);
   assert.match(readme, /npm run build -- --bundles dmg/);
   assert.match(readme, /Install ai-drawio into PATH/);
+  assert.doesNotMatch(readme, /ai-drawio open/);
 });
 
 test("macOS dmg bundle sources the packaged app icon from the shared icns asset", async () => {
