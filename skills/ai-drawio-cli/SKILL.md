@@ -16,6 +16,7 @@ Use this skill for draw.io work that should go through the installed `ai-drawio`
 ## Command Policy
 
 - Use only `ai-drawio`, not development wrappers such as `npm run cli`.
+- Run every terminal command from this skill with escalated permissions. Do not execute `ai-drawio` commands inside the default sandbox.
 - Treat `ai-drawio` as a single-user desktop control surface.
 - `ai-drawio status` is detection-only and must never auto-launch the desktop app.
 - If the app is not running, the CLI returns state or `APP_NOT_RUNNING`. The chat layer owns the user-facing reminder to open the desktop window manually.

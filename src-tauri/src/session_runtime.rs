@@ -66,16 +66,13 @@ pub fn is_reusable_session_state(state: &ShellState) -> bool {
     get_active_session_id(state).is_some() && state.bridge_ready && state.frame_ready
 }
 
-pub fn focus_main_window(app: &AppHandle) -> Result<(), ControlError> {
+pub fn show_main_window(app: &AppHandle) -> Result<(), ControlError> {
     let window = app
         .get_webview_window(crate::webview_api::MAIN_WINDOW_LABEL)
         .ok_or_else(|| ControlError::new("APP_NOT_RUNNING", "main window is not available"))?;
 
     window
         .show()
-        .map_err(|error| ControlError::new("APP_NOT_READY", error.to_string()))?;
-    window
-        .set_focus()
         .map_err(|error| ControlError::new("APP_NOT_READY", error.to_string()))?;
 
     Ok(())
@@ -86,7 +83,7 @@ pub fn create_conversation(
     bridge_state: &ScriptResultBridgeState,
     timeout: Duration,
 ) -> Result<Value, ControlError> {
-    focus_main_window(app)?;
+    show_main_window(app)?;
 
     let started_at = Instant::now();
     let poll_interval = Duration::from_millis(200);
@@ -201,7 +198,7 @@ pub fn list_sessions(
     bridge_state: &ScriptResultBridgeState,
     timeout: Duration,
 ) -> Result<Vec<SessionListEntry>, ControlError> {
-    focus_main_window(app)?;
+    show_main_window(app)?;
 
     let started_at = Instant::now();
     let poll_interval = Duration::from_millis(200);
@@ -238,7 +235,7 @@ pub fn get_conversation(
     session_id: &str,
     timeout: Duration,
 ) -> Result<Value, ControlError> {
-    focus_main_window(app)?;
+    show_main_window(app)?;
 
     let started_at = Instant::now();
     let poll_interval = Duration::from_millis(200);
@@ -363,7 +360,7 @@ pub fn ensure_session(
     bridge_state: &ScriptResultBridgeState,
     timeout: Duration,
 ) -> Result<ShellState, ControlError> {
-    focus_main_window(app)?;
+    show_main_window(app)?;
 
     if let Ok(state) = get_shell_state(app, bridge_state, Duration::from_secs(2)) {
         if is_reusable_session_state(&state) {
@@ -398,7 +395,7 @@ pub fn open_session(
     session_id: &str,
     timeout: Duration,
 ) -> Result<ShellState, ControlError> {
-    focus_main_window(app)?;
+    show_main_window(app)?;
 
     if let Ok(state) = get_shell_state(app, bridge_state, Duration::from_secs(2)) {
         if get_active_session_id(&state).as_deref() == Some(session_id) && is_reusable_session_state(&state) {
@@ -425,7 +422,7 @@ pub fn open_session_by_title(
     title: &str,
     timeout: Duration,
 ) -> Result<ShellState, ControlError> {
-    focus_main_window(app)?;
+    show_main_window(app)?;
 
     let normalized_title = title.trim();
 
