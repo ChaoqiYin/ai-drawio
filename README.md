@@ -60,12 +60,12 @@ The desktop app starts on a local AI conversation history page and opens draw.io
   Automatically ensures there is a ready session detail page before reading the document.
 - `ai-drawio canvas document.get --session <conversation-id>`
   Uses a strict explicit session override.
-- `ai-drawio canvas document.apply '<mxfile>...</mxfile>'`
-  Treats the positional argument as inline XML content and automatically ensures there is a ready session detail page before applying the document.
-- `ai-drawio canvas document.apply --xml-file <path>`
-  Reads the XML content from a file path before applying the document.
-- `ai-drawio canvas document.apply --xml-stdin`
-  Reads the document from stdin instead of an inline XML argument.
+- `ai-drawio canvas document.apply <prompt> '<mxfile>...</mxfile>'`
+  Treats the first positional argument as the required request summary and the second positional argument as inline XML content before applying the document.
+- `ai-drawio canvas document.apply <prompt> --xml-file <path>`
+  Treats the first positional argument as the required request summary and reads the XML content from a file path before applying the document.
+- `ai-drawio canvas document.apply <prompt> --xml-stdin`
+  Treats the first positional argument as the required request summary and reads the document from stdin instead of an inline XML argument.
 - `ai-drawio canvas document.restore '<mxfile>...</mxfile>'`
   Restores inline XML content without adding canvas history.
 - `ai-drawio canvas document.restore --xml-file <path>`
