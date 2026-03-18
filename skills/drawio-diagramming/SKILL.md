@@ -7,22 +7,22 @@ description: Draw.io diagram authoring guidance for `.drawio` documents and `mxG
 
 ## Overview
 
-Use this skill for draw.io diagram content work: XML authoring, layout planning, connector routing, container structure, and validity review. Keep this file lean and load only the reference that matches the immediate problem.
+Use this skill for draw.io XML content work: XML authoring technique, layout planning, connector routing, container structure, and validity review. Keep this file lean and load only the reference that matches the immediate problem.
 
-This skill does not explain how to operate the desktop app or `ai-drawio` CLI. Pair it with `ai-drawio-cli` only when the task also needs live document reads, writes, exports, or rollback.
+This skill is only about diagram content. It does not define task routing, file-output policy, or how to operate the desktop app or `ai-drawio` CLI.
+If the user wants the diagram drawn, rendered, or applied in live draw.io, you must also use `ai-drawio-cli` and continue to `canvas document.apply`.
 
 ## Workflow
 
-1. Decide whether the task is diagram authoring or tool execution.
-2. Stay in this skill for content problems such as malformed XML, poor routing, overlapping edges, or nested layout issues.
-3. Also use `ai-drawio-cli` if the user needs the diagram applied to the app, exported, or read from a live session.
-4. Load only the reference file that matches the task:
+1. Stay in this skill for content problems such as malformed XML, poor routing, overlapping edges, nested layout issues, or unclear container structure.
+2. If the user wants the result applied to the live draw.io canvas, pair this skill with `ai-drawio-cli` and treat any generated XML or `.drawio` file as an intermediate artifact rather than completion.
+3. Load only the reference file that matches the content problem:
    - `references/xml-authoring.md`
      - Use for `.drawio` structure, `mxGraphModel` structure, `mxCell` patterns, style keys, IDs, escaping, and XML well-formedness.
    - `references/layout-and-containers.md`
      - Use for edge routing, spacing, waypoints, arrowhead clearance, groups, swimlanes, containers, and parent-child layout.
-5. Build or patch the smallest valid XML section that solves the request.
-6. Validate the invariants before returning or handing off to another skill.
+4. Author or patch the smallest valid XML section that solves the content problem.
+5. Validate the invariants before returning the XML content.
 
 ## Invariants
 

@@ -13,10 +13,17 @@ Use this skill for draw.io work that should go through the installed `ai-drawio`
 
 `ai-drawio` commands must be executed strictly one at a time.
 
+## Intent Mapping
+
+- If the user asks to draw, render, or put a diagram into draw.io, treat the completed outcome as updating the live canvas through `ai-drawio canvas document.apply`.
+- Do not treat generating a `.drawio` file or raw XML as completion unless the user explicitly asks for file-only output or raw XML.
+- If XML authoring is needed before execution, treat that XML as an intermediate artifact and continue to the apply command.
+
 ## Command Policy
 
 - Use only `ai-drawio`, not development wrappers such as `npm run cli`.
 - Run every terminal command from this skill with escalated permissions. Do not execute `ai-drawio` commands inside the default sandbox.
+- Every `canvas document.apply` command must include a required prompt argument with the user request summary.
 - Treat `ai-drawio` as a single-user desktop control surface.
 - `ai-drawio status` is detection-only and must never auto-launch the desktop app.
 - If the app is not running, the CLI returns state or `APP_NOT_RUNNING`. The chat layer owns the user-facing reminder to open the desktop window manually.
@@ -35,6 +42,8 @@ Use this skill for draw.io work that should go through the installed `ai-drawio`
 - For SVG export, use `canvas document.svg` directly.
 - For forward edits, use `canvas document.apply` directly.
 - For rollback, use `canvas document.restore` directly.
+- When the user asks to draw in draw.io, default to `canvas document.apply`, not file generation.
+- Do not generate a `.drawio` file unless the user explicitly asked for file output or the XML payload is too large for a safe inline command.
 - Only use a two-step path such as `canvas document.get` followed by `canvas document.apply` when the task truly needs the current XML first.
 
 ## Command Selection
@@ -70,9 +79,12 @@ Use this skill for draw.io work that should go through the installed `ai-drawio`
 3. If the task needs multiple `ai-drawio` commands, plan a strictly serial sequence and wait for each command to finish before starting the next one.
 4. For canvas edits that need the current document first, call `canvas document.get` before constructing the updated XML. Otherwise do not add this read step.
 5. If one request needs multiple diagrams rendered together, build one XML document with multiple diagrams or pages unless the user explicitly asked for separate XML outputs.
-6. Use `canvas document.apply` for forward changes and `canvas document.restore` only for rollback-style changes.
-7. If a command returns `APP_NOT_RUNNING`, or `status` returns `running: false`, stop and tell the user to open the desktop window manually before retrying.
-8. Read only the single matching command reference file when exact command syntax or argument shape matters.
+6. If the user asked to draw or render in draw.io, use `canvas document.apply` as the default completion path unless the user explicitly requested file-only output.
+7. Always include the required prompt argument when running `canvas document.apply`.
+8. Keep XML in memory by default. Only use `--xml-file` when the XML already exists on disk or an oversized inline payload requires a temporary file.
+9. Use `canvas document.apply` for forward changes and `canvas document.restore` only for rollback-style changes.
+10. If a command returns `APP_NOT_RUNNING`, or `status` returns `running: false`, stop and tell the user to open the desktop window manually before retrying. Do not fall back to handing back a `.drawio` file as a substitute completion state.
+11. Read only the single matching command reference file when exact command syntax or argument shape matters.
 
 ## Reference
 

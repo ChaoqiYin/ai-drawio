@@ -68,9 +68,10 @@ pub fn build_cli_command() -> Command {
                 .subcommand(
                     Command::new("document.apply")
                         .about("Apply a draw.io document to the resolved session")
+                        .arg(Arg::new("prompt").index(1).value_name("prompt").required(true))
                         .arg(
                             Arg::new("xml")
-                                .index(1)
+                                .index(2)
                                 .value_name("xml")
                                 .required_unless_present_any(["xml-file", "xml-stdin"])
                                 .conflicts_with("xml-file")
@@ -102,7 +103,6 @@ pub fn build_cli_command() -> Command {
                                 .long("base-version")
                                 .value_name("version"),
                         )
-                        .arg(Arg::new("prompt").long("prompt").value_name("text"))
                         .arg(
                             Arg::new("output-file")
                                 .long("output-file")

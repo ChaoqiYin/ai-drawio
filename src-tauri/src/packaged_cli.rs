@@ -244,6 +244,7 @@ pub fn build_request_for_command(
                     "canvas document.apply requires exactly one xml input mode: <xml>, --xml-file <path>, or --xml-stdin".to_string(),
                 );
             };
+            let prompt = require_apply_prompt(prompt)?;
 
             let mut payload = Map::from_iter([("xml".to_string(), Value::String(xml))]);
 
@@ -254,9 +255,7 @@ pub fn build_request_for_command(
                 );
             }
 
-            if let Some(prompt) = prompt {
-                payload.insert("prompt".to_string(), Value::String(prompt.to_string()));
-            }
+            payload.insert("prompt".to_string(), Value::String(prompt));
 
             Ok(build_request(
                 "canvas.document.apply",
@@ -526,6 +525,15 @@ fn build_svg_page_file_name(index: usize, page_name: &str) -> String {
     }
 }
 
+fn require_apply_prompt(prompt: &Option<String>) -> Result<String, String> {
+    prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "canvas document.apply requires --prompt <text>".to_string())
+}
+
 fn read_stdin() -> Result<String, String> {
     let mut buffer = String::new();
     std::io::stdin()
@@ -678,6 +686,7 @@ mod tests {
         let command = parse_cli_args(&[
             "canvas",
             "document.apply",
+            "apply inline xml",
             "<mxfile><diagram id='1'>inline</diagram></mxfile>",
         ])
         .expect("document apply should parse");
@@ -690,7 +699,7 @@ mod tests {
                 xml_file: None,
                 xml_stdin: false,
                 base_version: None,
-                prompt: None,
+                prompt: Some("apply inline xml".to_string()),
                 output_file: None
             }
         );
@@ -698,7 +707,13 @@ mod tests {
 
     #[test]
     fn parses_document_apply_with_xml_file_flag() {
-        let command = parse_cli_args(&["canvas", "document.apply", "--xml-file", "./next.drawio"])
+        let command = parse_cli_args(&[
+            "canvas",
+            "document.apply",
+            "apply xml file",
+            "--xml-file",
+            "./next.drawio",
+        ])
             .expect("document apply with xml file should parse");
 
         assert_eq!(
@@ -709,7 +724,7 @@ mod tests {
                 xml_file: Some("./next.drawio".to_string()),
                 xml_stdin: false,
                 base_version: None,
-                prompt: None,
+                prompt: Some("apply xml file".to_string()),
                 output_file: None
             }
         );
@@ -717,7 +732,12 @@ mod tests {
 
     #[test]
     fn parses_document_apply_with_stdin_mode() {
-        let command = parse_cli_args(&["canvas", "document.apply", "--xml-stdin"])
+        let command = parse_cli_args(&[
+            "canvas",
+            "document.apply",
+            "apply stdin xml",
+            "--xml-stdin",
+        ])
             .expect("stdin mode should parse");
 
         assert_eq!(
@@ -728,9 +748,24 @@ mod tests {
                 xml_file: None,
                 xml_stdin: true,
                 base_version: None,
-                prompt: None,
+                prompt: Some("apply stdin xml".to_string()),
                 output_file: None
             }
+        );
+    }
+
+    #[test]
+    fn rejects_document_apply_without_prompt() {
+        let error = parse_cli_args(&[
+            "canvas",
+            "document.apply",
+            "<mxfile><diagram id='1'>inline</diagram></mxfile>",
+        ])
+        .expect_err("document apply without prompt must fail");
+
+        assert!(
+            error.contains("prompt") || error.contains("<prompt>"),
+            "unexpected error: {error}"
         );
     }
 
@@ -774,6 +809,7 @@ mod tests {
         let error = parse_cli_args(&[
             "canvas",
             "document.apply",
+            "apply inline xml",
             "<mxfile><diagram id='1'>inline</diagram></mxfile>",
             "--xml-stdin",
         ])
@@ -816,7 +852,7 @@ mod tests {
             xml_file: None,
             xml_stdin: false,
             base_version: None,
-            prompt: None,
+            prompt: Some("open title and apply".to_string()),
             output_file: None,
         })
         .expect("document apply should build a title-based resolution request");
@@ -855,6 +891,25 @@ mod tests {
         assert!(request.payload.get("xml").is_some());
 
         let _ = fs::remove_file(restore_file);
+    }
+
+    #[test]
+    fn build_request_for_document_apply_requires_non_empty_prompt() {
+        let error = build_request_for_command(
+            &PackagedCliCommand::CanvasDocumentApply {
+                locator: None,
+                xml: Some("<mxfile />".to_string()),
+                xml_file: None,
+                xml_stdin: false,
+                base_version: None,
+                prompt: None,
+                output_file: None,
+            },
+            Some("sess-1".to_string()),
+        )
+        .expect_err("document apply request should reject a missing prompt");
+
+        assert!(error.contains("--prompt"), "unexpected error: {error}");
     }
 
     #[test]
@@ -975,7 +1030,7 @@ mod tests {
                 xml_file: None,
                 xml_stdin: false,
                 base_version: None,
-                prompt: None,
+                prompt: Some("apply document".to_string()),
                 output_file: None,
             },
             PackagedCliCommand::CanvasDocumentRestore {

@@ -26,6 +26,7 @@ import {
   type ConversationMessage,
   type ConversationRecord,
 } from '../_lib/conversation-model';
+import { buildCanvasHistoryLabel } from '../_lib/canvas-history-label';
 import { normalizeCanvasHistoryPreviewPages, type CanvasHistoryPreviewPage } from '../_lib/canvas-history-preview';
 import {
   appendCanvasHistoryEntry,
@@ -941,6 +942,11 @@ export default function SessionWorkspace() {
 
       const conversationId = sessionIdRef.current.trim();
       const normalizedPrompt = prompt.trim();
+      const resolvedHistoryLabel = buildCanvasHistoryLabel({
+        fallbackLabel: '快照',
+        historyLabel,
+        prompt: normalizedPrompt,
+      });
       let userMessage: ConversationMessage | null = null;
 
       if (conversationId) {
@@ -967,7 +973,7 @@ export default function SessionWorkspace() {
 
           await appendCanvasHistoryEntry({
             conversationId,
-            label: historyLabel,
+            label: resolvedHistoryLabel,
             previewPages,
             relatedMessageId: userMessage?.id || relatedMessageId,
             source: historySource,

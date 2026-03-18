@@ -1,4 +1,4 @@
 interface:
   display_name: "Draw.io Diagramming"
   short_description: "Draw.io XML drawing patterns and layout guidance"
-  default_prompt: "Use $drawio-diagramming to design or repair draw.io diagrams and mxGraph XML with clean layout and valid structure."
+  default_prompt: "Use $drawio-diagramming to design or repair draw.io diagrams and mxGraph XML with clean layout and valid structure. If the user wants the result applied in live draw.io, also use `$ai-drawio-cli` and do not stop at generating a `.drawio` file."
