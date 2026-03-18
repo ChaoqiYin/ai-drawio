@@ -1,4 +1,4 @@
 interface:
   display_name: "AI Drawio CLI"
-  short_description: "Run ai-drawio with minimal optional flags."
-  default_prompt: "Use $ai-drawio-cli to operate the ai-drawio command and avoid non-required flags unless the user explicitly needs them."
+  short_description: "Use ai-drawio for draw.io and diagram tasks."
+  default_prompt: "Use $ai-drawio-cli to handle draw.io or diagram-tool tasks through ai-drawio and avoid non-required flags unless the user explicitly needs them."
