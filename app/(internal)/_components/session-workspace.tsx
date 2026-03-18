@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Alert,
-  Breadcrumb,
   Button,
   Card,
   Empty,
@@ -37,6 +36,7 @@ import {
   updateConversationTitle,
 } from '../_lib/conversation-store';
 import { saveHomeRedirectError } from '../_lib/conversation-route-state';
+import { InternalBreadcrumb, type InternalBreadcrumbRoute } from './internal-breadcrumb';
 import { InternalTopNavigation } from './internal-top-navigation';
 
 const DRAWIO_EMBED_PATH = '/drawio/index.html?embed=1&proto=json&spin=1&noSaveBtn=1&noExitBtn=1&saveAndExit=0';
@@ -63,11 +63,6 @@ const { Paragraph, Text } = Typography;
 type PendingRequest = {
   reject: (reason?: unknown) => void;
   resolve: (value: unknown) => void;
-};
-
-type BreadcrumbRoute = {
-  path: string;
-  breadcrumbName: string;
 };
 
 type BridgeState = {
@@ -549,9 +544,9 @@ export default function SessionWorkspace() {
 
   const sessionId = searchParams.get('id');
   const breadcrumbRoutes = [
-    { path: '/', breadcrumbName: '历史记录' },
-    { path: sessionId || '', breadcrumbName: conversation?.title || '未命名会话' },
-  ] satisfies BreadcrumbRoute[];
+    { path: '/', breadcrumbName: '首页' },
+    { path: sessionId || '', breadcrumbName: '工作区详情' },
+  ] satisfies InternalBreadcrumbRoute[];
 
   conversationRef.current = conversation;
   frameReadyRef.current = isFrameReady;
@@ -666,26 +661,6 @@ export default function SessionWorkspace() {
 
   const handleNavigateBack = (): void => {
     router.push('/');
-  };
-
-  const renderBreadcrumbItem = (route: BreadcrumbRoute, routes: BreadcrumbRoute[]): ReactNode => {
-    const isLastRoute = routes.indexOf(route) === routes.length - 1;
-
-    if (isLastRoute) {
-      return <span>{route.breadcrumbName}</span>;
-    }
-
-    return (
-      <button
-        type="button"
-        className="cursor-pointer border-0 bg-transparent p-0 text-inherit"
-        onClick={() => {
-          router.push('/');
-        }}
-      >
-        {route.breadcrumbName}
-      </button>
-    );
   };
 
   function closeRenameDialog(options?: { force?: boolean }): void {
@@ -1264,11 +1239,7 @@ export default function SessionWorkspace() {
                 className="flex min-w-0 flex-1 items-center justify-between gap-4"
                 data-layout="workspace-top-nav-body"
               >
-                <Breadcrumb
-                  data-layout="workspace-breadcrumb"
-                  routes={breadcrumbRoutes}
-                  itemRender={renderBreadcrumbItem}
-                />
+                <InternalBreadcrumb dataLayout="workspace-breadcrumb" routes={breadcrumbRoutes} />
 
                 <div className="flex items-center justify-end gap-3" data-layout="workspace-status-bar">
                   <Space size={8}>

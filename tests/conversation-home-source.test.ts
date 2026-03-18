@@ -11,18 +11,24 @@ test("conversation home source includes delete actions", async () => {
   const source = await readFile(SOURCE_PATH, "utf8");
 
   assert.match(source, /@arco-design\/web-react/);
+  assert.match(source, /@arco-design\/web-react\/icon/);
   assert.match(source, /Popconfirm/);
   assert.match(source, /Card/);
   assert.match(source, /Button/);
+  assert.match(source, /Tag/);
   assert.match(source, /Typography/);
   assert.match(source, /Modal/);
   assert.match(source, /Input/);
+  assert.match(source, /IconSettings/);
   assert.match(source, /handleDeleteConversation/);
   assert.match(source, /handleClearAllData/);
   assert.match(source, /handleRenameConversation/);
   assert.match(source, /renameDraftTitle/);
   assert.match(source, /renameDialogConversationId/);
   assert.match(source, /loadConversations/);
+  assert.match(source, /getCliInstallStatus/);
+  assert.match(source, /getCliInstallStatusLabel/);
+  assert.match(source, /getCliInstallStatusColor/);
   assert.match(source, /consumeHomeRedirectError/);
   assert.match(source, /subscribeConversationChanges/);
   assert.match(source, /updateConversationTitle/);
@@ -42,9 +48,40 @@ test("conversation home source includes delete actions", async () => {
   assert.match(source, /const pageCardStyle = \{[\s\S]*borderRadius: 8,/);
   assert.match(source, /const listCardStyle = \{[\s\S]*borderRadius: 8,/);
   assert.match(source, /选择历史会话开启工作区/);
+  assert.match(source, /const \[cliInstallStatus, setCliInstallStatus\] = useState/);
+  assert.match(source, /const \[cliStatusError, setCliStatusError\] = useState/);
+  assert.match(source, /data-layout="home-toolbar"/);
+  assert.match(source, /data-layout="home-cli-status"/);
+  assert.match(source, /data-status=\{cliInstallStatus\.status\}/);
+  assert.match(source, /backgroundColor: `rgb\(var\(--\$\{getCliInstallStatusColor\(cliInstallStatus\.status\)\}-6\)\)`/);
+  assert.match(source, /title=\{cliStatusError \? cliStatusError : getCliInstallStatusLabel\(cliInstallStatus\.status\)\}/);
+  assert.match(
+    source,
+    /<Text style=\{\{[\s\S]*color: 'var\(--color-text-3\)'[\s\S]*fontSize: 12[\s\S]*fontWeight: 500[\s\S]*\}\}>[\s\S]*getCliInstallStatusLabel\(cliInstallStatus\.status\)[\s\S]*<\/Text>/
+  );
+  assert.match(
+    source,
+    /<Button[\s\S]*icon=\{<IconSettings \/>\}[\s\S]*aria-label="打开设置"[\s\S]*onClick=\{openSettings\}[\s\S]*>[\s\S]*<\/Button>/
+  );
+  assert.match(
+    source,
+    /<Card[\s\S]*title=\{\s*<Title heading=\{6\} style=\{\{ margin: 0 \}\}>\s*\{item\.title\}\s*<\/Title>\s*\}[\s\S]*extra=\{\s*<Space size=\{8\}>/
+  );
+  assert.match(
+    source,
+    /<Space direction="vertical" size=\{8\} style=\{\{ width: '100%', alignItems: 'stretch' \}\}>[\s\S]*<Text style=\{\{[\s\S]*color: 'var\(--color-text-4\)'[\s\S]*fontSize: 12[\s\S]*fontWeight: 400[\s\S]*\}\}>[\s\S]*formatDate\(item\.updatedAt\)[\s\S]*<\/Text>[\s\S]*<Paragraph/
+  );
+  assert.doesNotMatch(source, /CLI 集成 \{getCliInstallStatusLabel\(cliInstallStatus\.status\)\}/);
+  assert.doesNotMatch(source, /cliInstallStatus\.commandPath/);
+  assert.doesNotMatch(
+    source,
+    /<div className="flex items-center justify-between gap-3">[\s\S]*<Title heading=\{6\}[\s\S]*<Text type="secondary">\{formatDate\(item\.updatedAt\)\}<\/Text>/
+  );
+  assert.doesNotMatch(source, /<Text type="secondary">\{formatDate\(item\.updatedAt\)\}<\/Text>/);
   assert.match(source, /重命名/);
   assert.match(source, /清空全部本地数据/);
   assert.match(source, /删除/);
+  assert.doesNotMatch(source, /<Button disabled=\{isNavigating \|\| isClearingAll\} onClick=\{openSettings\}>\s*设置\s*<\/Button>/);
   assert.doesNotMatch(source, /borderRadius: 24,/);
   assert.doesNotMatch(source, /borderRadius: 20,/);
   assert.doesNotMatch(source, /internal-gradient-text/);

@@ -15,7 +15,7 @@ type TauriWindow = Window &
   };
 
 export type CliInstallStatus = {
-  status: "not_installed" | "installed" | "mismatched" | "error";
+  status: "not_installed" | "installed" | "installed_other_build" | "mismatched" | "error";
   commandPath: string;
   targetPath: string | null;
   completionInstalled: boolean;

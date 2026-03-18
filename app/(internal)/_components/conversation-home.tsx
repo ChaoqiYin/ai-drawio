@@ -15,8 +15,12 @@ import {
   Tag,
   Typography,
 } from '@arco-design/web-react';
-import { IconDelete, IconEdit, IconPlus, IconPoweroff } from '@arco-design/web-react/icon';
+import { IconDelete, IconEdit, IconPlus, IconPoweroff, IconSettings } from '@arco-design/web-react/icon';
 
+import {
+  getCliInstallStatusColor,
+  getCliInstallStatusLabel,
+} from '../_lib/cli-install-status-presentation';
 import type { ConversationRecord } from '../_lib/conversation-model';
 import { buildSessionHref, getConversationPreview, sortConversationsByUpdatedAt } from '../_lib/conversation-model';
 import {
@@ -28,6 +32,7 @@ import {
   updateConversationTitle,
 } from '../_lib/conversation-store';
 import { consumeHomeRedirectError } from '../_lib/conversation-route-state';
+import { getCliInstallStatus, type CliInstallStatus } from '../_lib/tauri-cli-install';
 
 const shellClassName =
   'internal-app-shell mx-auto flex min-h-screen w-full max-w-[1480px] flex-col px-3! py-3! md:px-5! md:py-5!';
@@ -58,6 +63,13 @@ export default function ConversationHome() {
   const suppressNavigationUntilRef = useRef(0);
   const [isPending, startTransition] = useTransition();
   const [items, setItems] = useState<ConversationRecord[]>([]);
+  const [cliInstallStatus, setCliInstallStatus] = useState<CliInstallStatus>({
+    status: 'not_installed',
+    commandPath: '/usr/local/bin/ai-drawio',
+    targetPath: null,
+    completionInstalled: false,
+  });
+  const [cliStatusError, setCliStatusError] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isClearingAll, setIsClearingAll] = useState(false);
@@ -117,7 +129,27 @@ export default function ConversationHome() {
       });
     }
 
+    async function syncCliInstallStatus() {
+      try {
+        const nextStatus = await getCliInstallStatus();
+
+        if (!cancelled) {
+          setCliInstallStatus(nextStatus);
+          setCliStatusError('');
+        }
+      } catch (nextError) {
+        if (!cancelled) {
+          setCliInstallStatus((currentStatus) => ({
+            ...currentStatus,
+            status: 'error',
+          }));
+          setCliStatusError(nextError instanceof Error ? nextError.message : '读取 CLI 集成状态失败。');
+        }
+      }
+    }
+
     void syncConversations();
+    void syncCliInstallStatus();
     const unsubscribe = subscribeConversationChanges(() => {
       void syncConversations({ keepLoading: true });
     });
@@ -258,6 +290,37 @@ export default function ConversationHome() {
         <Space direction="vertical" size={16} style={{ display: 'flex' }}>
           <Card className={`internal-panel ${accentSurfaceClassName}`} style={pageCardStyle}>
             <Space direction="vertical" size={14} style={{ width: '100%', alignItems: 'stretch' }}>
+              <div
+                className="flex items-center justify-between gap-4 border-b border-[rgba(148,163,184,0.18)] pb-3"
+                data-layout="home-toolbar"
+              >
+                <div
+                  className="flex min-w-0 items-center gap-3"
+                  data-layout="home-cli-status"
+                  data-status={cliInstallStatus.status}
+                  title={cliStatusError ? cliStatusError : getCliInstallStatusLabel(cliInstallStatus.status)}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="block h-2.5 w-2.5 rounded-full"
+                    style={{
+                      backgroundColor: `rgb(var(--${getCliInstallStatusColor(cliInstallStatus.status)}-6))`,
+                      boxShadow: `0 0 0 4px rgb(var(--${getCliInstallStatusColor(cliInstallStatus.status)}-1))`,
+                    }}
+                  />
+                  <Text style={{ color: 'var(--color-text-3)', fontSize: 12, fontWeight: 500 }}>
+                    {getCliInstallStatusLabel(cliInstallStatus.status)}
+                  </Text>
+                </div>
+                <Button
+                  disabled={isNavigating || isClearingAll}
+                  icon={<IconSettings />}
+                  aria-label="打开设置"
+                  onClick={openSettings}
+                  shape="circle"
+                  type="secondary"
+                ></Button>
+              </div>
               <Space size={10} align="center" wrap>
                 <Tag color="green">{isLoading ? '正在加载本地历史' : `共 ${items.length} 条会话`}</Tag>
               </Space>
@@ -273,9 +336,6 @@ export default function ConversationHome() {
                   onClick={handleCreateConversation}
                 >
                   {isCreatingConversation || isPending ? '正在打开...' : '创建本地会话'}
-                </Button>
-                <Button disabled={isNavigating || isClearingAll} onClick={openSettings}>
-                  设置
                 </Button>
                 <Popconfirm
                   title="确认清空全部本地数据吗？"
@@ -305,6 +365,11 @@ export default function ConversationHome() {
                     key={item.id}
                     style={listCardStyle}
                     bodyStyle={{ padding: 18 }}
+                    title={
+                      <Title heading={6} style={{ margin: 0 }}>
+                        {item.title}
+                      </Title>
+                    }
                     extra={
                       <Space size={8}>
                         <Button
@@ -348,12 +413,9 @@ export default function ConversationHome() {
                     onClick={() => openConversation(item.id, item.title)}
                   >
                     <Space direction="vertical" size={8} style={{ width: '100%', alignItems: 'stretch' }}>
-                      <div className="flex items-center justify-between gap-3">
-                        <Title heading={6} style={{ margin: 0 }}>
-                          {item.title}
-                        </Title>
-                        <Text type="secondary">{formatDate(item.updatedAt)}</Text>
-                      </div>
+                      <Text style={{ color: 'var(--color-text-4)', fontSize: 12, fontWeight: 400 }}>
+                        {formatDate(item.updatedAt)}
+                      </Text>
                       <Paragraph type="secondary" ellipsis={{ rows: 2, cssEllipsis: true }} style={{ marginBottom: 0 }}>
                         {getConversationPreview(item)}
                       </Paragraph>

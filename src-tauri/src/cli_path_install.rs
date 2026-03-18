@@ -12,6 +12,7 @@ const ELEVATION_TOOL: &str = "osascript";
 enum CliInstallState {
     NotInstalled,
     Installed,
+    InstalledOtherBuild,
     Mismatched,
     Error,
 }
@@ -21,6 +22,7 @@ impl CliInstallState {
         match self {
             Self::NotInstalled => "not_installed",
             Self::Installed => "installed",
+            Self::InstalledOtherBuild => "installed_other_build",
             Self::Mismatched => "mismatched",
             Self::Error => "error",
         }
@@ -81,6 +83,8 @@ fn inspect_cli_install(_command_path: &Path, _current_target: &Path) -> CliInsta
             let normalized_current_target = normalize_path(_current_target);
             let state = if normalized_target == normalized_current_target {
                 CliInstallState::Installed
+            } else if is_development_target(&normalized_current_target) {
+                CliInstallState::InstalledOtherBuild
             } else {
                 CliInstallState::Mismatched
             };
@@ -92,6 +96,23 @@ fn inspect_cli_install(_command_path: &Path, _current_target: &Path) -> CliInsta
         }
         Err(_) => build_status(CliInstallState::Error, None, false),
     }
+}
+
+fn is_development_target(path: &Path) -> bool {
+    let mut has_target_dir = false;
+    let mut has_debug_dir = false;
+
+    for component in path.components() {
+        let value = component.as_os_str().to_string_lossy();
+        if value == "target" {
+            has_target_dir = true;
+        }
+        if value == "debug" {
+            has_debug_dir = true;
+        }
+    }
+
+    has_target_dir && has_debug_dir
 }
 
 fn resolve_symlink_target(command_path: &Path, raw_target: &Path) -> PathBuf {
@@ -332,6 +353,26 @@ mod tests {
         let status = inspect_cli_install(&command_path, &current_target);
 
         assert_eq!(status.status, "mismatched");
+        assert_eq!(status.target_path, Some(other_target.display().to_string()));
+    }
+
+    #[test]
+    fn cli_path_install_status_reports_installed_other_build_for_dev_binary_mismatch() {
+        let temp_dir = make_temp_dir("installed-other-build");
+        let command_path = temp_dir.join("ai-drawio");
+        let current_target = temp_dir.join("src-tauri/target/debug/ai-drawio");
+        let other_target = temp_dir.join("AI Drawio.app/Contents/MacOS/ai-drawio");
+        fs::create_dir_all(current_target.parent().expect("missing parent"))
+            .expect("failed to create current target parent");
+        fs::create_dir_all(other_target.parent().expect("missing parent"))
+            .expect("failed to create other target parent");
+        fs::write(&current_target, "binary").expect("failed to write current target");
+        fs::write(&other_target, "binary").expect("failed to write other target");
+        std::os::unix::fs::symlink(&other_target, &command_path).expect("failed to create symlink");
+
+        let status = inspect_cli_install(&command_path, &current_target);
+
+        assert_eq!(status.status, "installed_other_build");
         assert_eq!(status.target_path, Some(other_target.display().to_string()));
     }
 
