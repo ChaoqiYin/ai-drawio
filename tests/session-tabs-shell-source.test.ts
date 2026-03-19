@@ -11,9 +11,9 @@ const SHELL_SOURCE_PATH = new URL(
 test("internal home route renders the multi-session tabs shell", async () => {
   const source = await readFile(PAGE_SOURCE_PATH, "utf8");
 
-  assert.match(source, /SessionTabsShell/);
-  assert.match(source, /return <SessionTabsShell \/>;/);
-  assert.doesNotMatch(source, /ConversationHome/);
+  assert.match(source, /ConversationHome/);
+  assert.match(source, /return <ConversationHome \/>;/);
+  assert.doesNotMatch(source, /SessionTabsShell/);
 });
 
 test("session tabs shell owns opened and active session tab state", async () => {

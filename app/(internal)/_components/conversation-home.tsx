@@ -33,6 +33,7 @@ import {
 } from '../_lib/conversation-store';
 import { consumeHomeRedirectError } from '../_lib/conversation-route-state';
 import { getCliInstallStatus, type CliInstallStatus } from '../_lib/tauri-cli-install';
+import { useWorkspaceSessionStore } from '../_lib/workspace-session-store';
 
 const shellClassName =
   'internal-app-shell mx-auto flex min-h-screen w-full max-w-[1480px] flex-col px-3! py-3! md:px-5! md:py-5!';
@@ -51,10 +52,6 @@ const subtleTextStyle = { color: 'var(--color-text-3)' } as const;
 const { Content } = Layout;
 const { Paragraph, Text, Title } = Typography;
 
-type ConversationHomeProps = {
-  onOpenSessionTab: (conversationId: string, title: string) => void;
-};
-
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat('zh-CN', {
     dateStyle: 'medium',
@@ -62,8 +59,9 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-export default function ConversationHome({ onOpenSessionTab }: ConversationHomeProps) {
+export default function ConversationHome() {
   const router = useRouter();
+  const enterSessionDetail = useWorkspaceSessionStore((state) => state.enterSessionDetail);
   const suppressNavigationUntilRef = useRef(0);
   const [isPending, startTransition] = useTransition();
   const [items, setItems] = useState<ConversationRecord[]>([]);
@@ -164,7 +162,7 @@ export default function ConversationHome({ onOpenSessionTab }: ConversationHomeP
     };
   }, []);
 
-  function openConversation(conversationId: string, title: string, options?: { force?: boolean }) {
+  function openConversation(conversation: ConversationRecord, options?: { force?: boolean }) {
     if (shouldSuppressNavigation()) {
       return;
     }
@@ -173,9 +171,15 @@ export default function ConversationHome({ onOpenSessionTab }: ConversationHomeP
       return;
     }
 
-    setNavigationTarget(title);
+    setNavigationTarget(conversation.title);
     startTransition(() => {
-      onOpenSessionTab(conversationId, title);
+      enterSessionDetail({
+        id: conversation.id,
+        isReady: false,
+        title: conversation.title,
+        updatedAt: conversation.updatedAt,
+      });
+      router.push("/session");
     });
   }
 
@@ -189,7 +193,7 @@ export default function ConversationHome({ onOpenSessionTab }: ConversationHomeP
 
     try {
       const conversation = await createConversation('本地 AI 会话');
-      openConversation(conversation.id, conversation.title, { force: true });
+      openConversation(conversation, { force: true });
     } catch (nextError) {
       setNavigationTarget('');
       setError(nextError instanceof Error ? nextError.message : '创建本地会话失败。');
@@ -414,7 +418,7 @@ export default function ConversationHome({ onOpenSessionTab }: ConversationHomeP
                         </Popconfirm>
                       </Space>
                     }
-                    onClick={() => openConversation(item.id, item.title)}
+                    onClick={() => openConversation(item)}
                   >
                     <Space direction="vertical" size={8} style={{ width: '100%', alignItems: 'stretch' }}>
                       <Text style={{ color: 'var(--color-text-4)', fontSize: 12, fontWeight: 400 }}>
