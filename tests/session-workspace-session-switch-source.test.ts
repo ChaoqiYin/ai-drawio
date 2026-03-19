@@ -23,10 +23,10 @@ test("session tabs shell keeps one mounted host per opened session and only hide
   ]);
 
   assert.match(shellSource, /SessionWorkspaceHost/);
-  assert.match(shellSource, /openedSessionIds\.map\(\(sessionId\) =>/);
-  assert.match(shellSource, /hidden=\{sessionId !== activeSessionId\}/);
-  assert.match(shellSource, /function closeSessionTab\(sessionId: string\)/);
-  assert.match(shellSource, /current\.filter\(\(currentSessionId\) => currentSessionId !== sessionId\)/);
+  assert.match(shellSource, /openedSessions\.map\(\(session\) =>/);
+  assert.match(shellSource, /hidden=\{session\.id !== activeSessionId\}/);
+  assert.match(shellSource, /closeSession\(session\.id\)/);
+  assert.match(shellSource, /useWorkspaceSessionStore/);
 
   assert.match(hostSource, /export default function SessionWorkspaceHost/);
   assert.match(hostSource, /data-session-host=\{sessionId\}/);
