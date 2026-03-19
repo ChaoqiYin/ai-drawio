@@ -36,8 +36,11 @@ test("conversation home source includes delete actions", async () => {
   assert.match(source, /shouldSuppressNavigation/);
   assert.match(source, /suppressNavigationForDelete/);
   assert.match(source, /openConversation/);
+  assert.match(source, /onOpenSessionTab/);
+  assert.match(source, /onOpenSessionTab:\s*\(conversationId: string, title: string\) => void/);
   assert.match(source, /if \(shouldSuppressNavigation\(\)\) \{/);
   assert.match(source, /setNavigationTarget\(title\)/);
+  assert.match(source, /onOpenSessionTab\(conversationId, title\)/);
   assert.match(source, /internal-app-shell/);
   assert.match(source, /px-3! py-3! md:px-5! md:py-5!/);
   assert.match(source, /internal-page-list-card/);
@@ -95,4 +98,5 @@ test("conversation home source includes delete actions", async () => {
   assert.doesNotMatch(source, /internal-page-section-card/);
   assert.doesNotMatch(source, /internal-page-overlay-card/);
   assert.doesNotMatch(source, /window\.confirm/);
+  assert.doesNotMatch(source, /router\.push\(buildSessionHref\(conversationId\)\)/);
 });

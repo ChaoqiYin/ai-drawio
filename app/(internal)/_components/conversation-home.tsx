@@ -22,7 +22,7 @@ import {
   getCliInstallStatusLabel,
 } from '../_lib/cli-install-status-presentation';
 import type { ConversationRecord } from '../_lib/conversation-model';
-import { buildSessionHref, getConversationPreview, sortConversationsByUpdatedAt } from '../_lib/conversation-model';
+import { getConversationPreview, sortConversationsByUpdatedAt } from '../_lib/conversation-model';
 import {
   clearAllIndexedDbDatabases,
   createConversation,
@@ -51,6 +51,10 @@ const subtleTextStyle = { color: 'var(--color-text-3)' } as const;
 const { Content } = Layout;
 const { Paragraph, Text, Title } = Typography;
 
+type ConversationHomeProps = {
+  onOpenSessionTab: (conversationId: string, title: string) => void;
+};
+
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat('zh-CN', {
     dateStyle: 'medium',
@@ -58,7 +62,7 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-export default function ConversationHome() {
+export default function ConversationHome({ onOpenSessionTab }: ConversationHomeProps) {
   const router = useRouter();
   const suppressNavigationUntilRef = useRef(0);
   const [isPending, startTransition] = useTransition();
@@ -171,7 +175,7 @@ export default function ConversationHome() {
 
     setNavigationTarget(title);
     startTransition(() => {
-      router.push(buildSessionHref(conversationId));
+      onOpenSessionTab(conversationId, title);
     });
   }
 
@@ -442,7 +446,7 @@ export default function ConversationHome() {
                 正在进入画布工作区
               </Title>
               <Paragraph style={{ ...subtleTextStyle, marginBottom: 0 }}>
-                {isCreatingConversation ? '正在创建新的本地会话，请稍候。' : `正在打开 ${navigationTarget}，请稍候。`}
+                {isCreatingConversation ? '正在创建新的本地会话，请稍候。' : `正在准备 ${navigationTarget} 的工作区，请稍候。`}
               </Paragraph>
             </Space>
           </Card>

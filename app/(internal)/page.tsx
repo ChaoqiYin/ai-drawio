@@ -1,5 +1,5 @@
-import ConversationHome from "./_components/conversation-home";
+import SessionTabsShell from "./_components/session-tabs-shell";
 
 export default function HomePage() {
-  return <ConversationHome />;
+  return <SessionTabsShell />;
 }

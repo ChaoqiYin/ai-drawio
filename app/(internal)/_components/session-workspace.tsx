@@ -37,6 +37,11 @@ import {
   updateConversationTitle,
 } from '../_lib/conversation-store';
 import { saveHomeRedirectError } from '../_lib/conversation-route-state';
+import {
+  registerSessionRuntime,
+  runSessionDocumentAction,
+  unregisterSessionRuntime,
+} from '../_lib/session-runtime-registry';
 import { InternalBreadcrumb, type InternalBreadcrumbRoute } from './internal-breadcrumb';
 import { InternalTopNavigation } from './internal-top-navigation';
 
@@ -692,7 +697,12 @@ function installDocumentRemoteInvokes(frameWindow: DrawioFrameWindow | null | un
     };
 }
 
-export default function SessionWorkspace() {
+export default function SessionWorkspace({
+  sessionId: providedSessionId,
+}: {
+  hidden?: boolean;
+  sessionId?: string;
+} = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -729,7 +739,7 @@ export default function SessionWorkspace() {
   const [restoringHistoryId, setRestoringHistoryId] = useState('');
   const [isRouteRedirecting, setIsRouteRedirecting] = useState(false);
 
-  const sessionId = searchParams.get('id');
+  const sessionId = providedSessionId ?? searchParams.get('id');
   const breadcrumbRoutes = [
     { path: '/', breadcrumbName: '首页' },
     { path: sessionId || '', breadcrumbName: '工作区详情' },
@@ -1435,6 +1445,41 @@ export default function SessionWorkspace() {
       },
     };
 
+    registerSessionRuntime(sessionIdRef.current, {
+      documentBridge: {
+        applyDocument: async ({ historyLabel, historySource, prompt, relatedMessageId, xml }) =>
+          runSessionDocumentAction(sessionIdRef.current, async () =>
+            applyDocumentWithHistory({
+              historyLabel,
+              historySource,
+              prompt,
+              relatedMessageId,
+              xml,
+            }),
+          ),
+        applyDocumentWithoutHistory: async (xml) =>
+          runSessionDocumentAction(sessionIdRef.current, async () => applyDocumentWithoutHistory(xml)),
+        exportPreviewPages: async () =>
+          runSessionDocumentAction(sessionIdRef.current, async () => exportCurrentPreviewPages()),
+        exportSvgPages: async () =>
+          runSessionDocumentAction(sessionIdRef.current, async () => exportCurrentSvgPages()),
+        getDocument: async () =>
+          runSessionDocumentAction(sessionIdRef.current, async () => {
+            const xml = await readCurrentDocumentXml();
+
+            return {
+              readAt: new Date().toISOString(),
+              xml,
+            };
+          }),
+      },
+      getState: () => ({
+        isReady: bridge.remoteReady && frameReadyRef.current,
+        sessionId: sessionIdRef.current,
+        status: bridge.remoteReady && frameReadyRef.current ? 'idle' : 'loading',
+      }),
+    });
+
     window.addEventListener('message', handleFrameMessage);
 
     return () => {
@@ -1443,6 +1488,7 @@ export default function SessionWorkspace() {
       bridge.bootstrapStarted = false;
       bridge.bootstrappingBrowserFile = false;
       rejectPendingRequests('draw.io shell bridge was disposed');
+      unregisterSessionRuntime(sessionIdRef.current);
 
       if (shellWindow.__AI_DRAWIO_SHELL__) {
         if (previousDocumentBridge) {

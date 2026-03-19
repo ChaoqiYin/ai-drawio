@@ -1,10 +1,56 @@
 use crate::control_protocol::ControlError;
-use crate::session_runtime::{require_active_session, ShellState};
+use crate::session_runtime::{require_session_ready, ShellState};
 use crate::webview_api::{eval_main_window_script_with_result, ScriptResultBridgeState};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 use tauri::AppHandle;
+
+static ACTIVE_DOCUMENT_ACTIONS: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+fn begin_session_document_action(session_id: &str) -> Result<(), ControlError> {
+    let mut active_actions = ACTIVE_DOCUMENT_ACTIONS
+        .lock()
+        .map_err(|_| ControlError::new("INTERNAL_ERROR", "failed to lock document action state"))?;
+
+    if active_actions.contains(session_id) {
+        return Err(ControlError::new(
+            "SESSION_BUSY",
+            format!("session '{session_id}' already has an active document action"),
+        ));
+    }
+
+    active_actions.insert(session_id.to_string());
+
+    Ok(())
+}
+
+fn end_session_document_action(session_id: &str) {
+    if let Ok(mut active_actions) = ACTIVE_DOCUMENT_ACTIONS.lock() {
+        active_actions.remove(session_id);
+    }
+}
+
+fn build_session_document_bridge_script(
+    session_id: &str,
+    invocation: &str,
+) -> Result<String, ControlError> {
+    let session_id_json = serde_json::to_string(session_id)
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+
+    Ok(format!(
+        r#"
+const runtime = window.__AI_DRAWIO_SHELL__?.sessions?.[{session_id_json}];
+if (!runtime?.documentBridge) {{
+  throw new Error("session document bridge is not available");
+}}
+return await runtime.documentBridge.{invocation};
+"#
+    ))
+}
 
 pub fn get_document(
     app: &AppHandle,
@@ -12,13 +58,12 @@ pub fn get_document(
     session_id: &str,
     timeout: Duration,
 ) -> Result<Value, ControlError> {
-    let state = require_active_session(app, bridge_state, session_id, timeout)?;
+    let state = require_session_ready(app, bridge_state, session_id, timeout)?;
+    let script = build_session_document_bridge_script(session_id, "getDocument()")?;
     let value = eval_main_window_script_with_result(
         app,
         bridge_state,
-        r#"
-return await window.__AI_DRAWIO_SHELL__.documentBridge.getDocument();
-"#,
+        &script,
         timeout,
     )
     .map_err(|error| ControlError::new("DOCUMENT_NOT_AVAILABLE", error))?;
@@ -32,13 +77,12 @@ pub fn export_svg_pages(
     session_id: &str,
     timeout: Duration,
 ) -> Result<Value, ControlError> {
-    let state = require_active_session(app, bridge_state, session_id, timeout)?;
+    let state = require_session_ready(app, bridge_state, session_id, timeout)?;
+    let script = build_session_document_bridge_script(session_id, "exportSvgPages()")?;
     let value = eval_main_window_script_with_result(
         app,
         bridge_state,
-        r#"
-return await window.__AI_DRAWIO_SHELL__.documentBridge.exportSvgPages();
-"#,
+        &script,
         timeout,
     )
     .map_err(|error| ControlError::new("DOCUMENT_NOT_AVAILABLE", error))?;
@@ -52,13 +96,12 @@ pub fn export_preview_pages(
     session_id: &str,
     timeout: Duration,
 ) -> Result<Value, ControlError> {
-    let state = require_active_session(app, bridge_state, session_id, timeout)?;
+    let state = require_session_ready(app, bridge_state, session_id, timeout)?;
+    let script = build_session_document_bridge_script(session_id, "exportPreviewPages()")?;
     let value = eval_main_window_script_with_result(
         app,
         bridge_state,
-        r#"
-return await window.__AI_DRAWIO_SHELL__.documentBridge.exportPreviewPages();
-"#,
+        &script,
         timeout,
     )
     .map_err(|error| ControlError::new("DOCUMENT_NOT_AVAILABLE", error))?;
@@ -82,50 +125,53 @@ pub fn apply_document(
         ));
     }
 
-    let state = require_active_session(app, bridge_state, session_id, timeout)?;
-    let current_document = get_document(app, bridge_state, session_id, timeout)?;
-    let current_version = current_document
-        .get("version")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
+    begin_session_document_action(session_id)?;
 
-    if let Some(expected_version) = base_version {
-        if !expected_version.trim().is_empty() && expected_version != current_version {
-            return Err(ControlError::new(
-                "DOCUMENT_VERSION_MISMATCH",
-                "baseVersion does not match the current document",
-            )
-            .with_details(json!({
-                "expected": current_version,
-                "received": expected_version
-            })));
+    let result = (|| -> Result<Value, ControlError> {
+        let state = require_session_ready(app, bridge_state, session_id, timeout)?;
+        let current_document = get_document(app, bridge_state, session_id, timeout)?;
+        let current_version = current_document
+            .get("version")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+
+        if let Some(expected_version) = base_version {
+            if !expected_version.trim().is_empty() && expected_version != current_version {
+                return Err(ControlError::new(
+                    "DOCUMENT_VERSION_MISMATCH",
+                    "baseVersion does not match the current document",
+                )
+                .with_details(json!({
+                    "expected": current_version,
+                    "received": expected_version
+                })));
+            }
         }
-    }
 
-    let xml_json =
-        serde_json::to_string(xml).map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
-    let prompt_json = serde_json::to_string(prompt.unwrap_or_default())
-        .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+        let xml_json = serde_json::to_string(xml)
+            .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+        let prompt_json = serde_json::to_string(prompt.unwrap_or_default())
+            .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+        let script = build_session_document_bridge_script(
+            session_id,
+            &format!("applyDocument({{ prompt: {prompt_json}, xml: {xml_json} }})"),
+        )?;
 
-    let value = eval_main_window_script_with_result(
-        app,
-        bridge_state,
-        &format!(
-            r#"
-return await window.__AI_DRAWIO_SHELL__.documentBridge.applyDocument({{ prompt: {prompt_json}, xml: {xml_json} }});
-"#
-        ),
-        timeout,
-    )
-    .map_err(|error| ControlError::new("CANVAS_ACTION_FAILED", error))?;
+        let value = eval_main_window_script_with_result(app, bridge_state, &script, timeout)
+            .map_err(|error| ControlError::new("CANVAS_ACTION_FAILED", error))?;
 
-    let mut payload = build_document_payload(value, &state)?;
-    if let Some(object) = payload.as_object_mut() {
-        object.insert("previousVersion".to_string(), Value::String(current_version));
-    }
+        let mut payload = build_document_payload(value, &state)?;
+        if let Some(object) = payload.as_object_mut() {
+            object.insert("previousVersion".to_string(), Value::String(current_version));
+        }
 
-    Ok(payload)
+        Ok(payload)
+    })();
+
+    end_session_document_action(session_id);
+
+    result
 }
 
 pub fn apply_document_without_history(
@@ -143,48 +189,51 @@ pub fn apply_document_without_history(
         ));
     }
 
-    let state = require_active_session(app, bridge_state, session_id, timeout)?;
-    let current_document = get_document(app, bridge_state, session_id, timeout)?;
-    let current_version = current_document
-        .get("version")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
+    begin_session_document_action(session_id)?;
 
-    if let Some(expected_version) = base_version {
-        if !expected_version.trim().is_empty() && expected_version != current_version {
-            return Err(ControlError::new(
-                "DOCUMENT_VERSION_MISMATCH",
-                "baseVersion does not match the current document",
-            )
-            .with_details(json!({
-                "expected": current_version,
-                "received": expected_version
-            })));
+    let result = (|| -> Result<Value, ControlError> {
+        let state = require_session_ready(app, bridge_state, session_id, timeout)?;
+        let current_document = get_document(app, bridge_state, session_id, timeout)?;
+        let current_version = current_document
+            .get("version")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+
+        if let Some(expected_version) = base_version {
+            if !expected_version.trim().is_empty() && expected_version != current_version {
+                return Err(ControlError::new(
+                    "DOCUMENT_VERSION_MISMATCH",
+                    "baseVersion does not match the current document",
+                )
+                .with_details(json!({
+                    "expected": current_version,
+                    "received": expected_version
+                })));
+            }
         }
-    }
 
-    let xml_json =
-        serde_json::to_string(xml).map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+        let xml_json = serde_json::to_string(xml)
+            .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+        let script = build_session_document_bridge_script(
+            session_id,
+            &format!("applyDocumentWithoutHistory({xml_json})"),
+        )?;
 
-    let value = eval_main_window_script_with_result(
-        app,
-        bridge_state,
-        &format!(
-            r#"
-return await window.__AI_DRAWIO_SHELL__.documentBridge.applyDocumentWithoutHistory({xml_json});
-"#
-        ),
-        timeout,
-    )
-    .map_err(|error| ControlError::new("CANVAS_ACTION_FAILED", error))?;
+        let value = eval_main_window_script_with_result(app, bridge_state, &script, timeout)
+            .map_err(|error| ControlError::new("CANVAS_ACTION_FAILED", error))?;
 
-    let mut payload = build_document_payload(value, &state)?;
-    if let Some(object) = payload.as_object_mut() {
-        object.insert("previousVersion".to_string(), Value::String(current_version));
-    }
+        let mut payload = build_document_payload(value, &state)?;
+        if let Some(object) = payload.as_object_mut() {
+            object.insert("previousVersion".to_string(), Value::String(current_version));
+        }
 
-    Ok(payload)
+        Ok(payload)
+    })();
+
+    end_session_document_action(session_id);
+
+    result
 }
 
 fn build_document_payload(value: Value, state: &ShellState) -> Result<Value, ControlError> {
@@ -373,7 +422,10 @@ pub fn hash_xml(xml: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_preview_pages_payload, build_svg_pages_payload, hash_xml};
+    use super::{
+        begin_session_document_action, build_preview_pages_payload, build_svg_pages_payload,
+        end_session_document_action, hash_xml,
+    };
     use crate::session_runtime::ShellState;
     use serde_json::json;
 
@@ -446,5 +498,16 @@ mod tests {
         assert_eq!(payload["pages"][0]["pngDataUri"], "data:image/png;base64,cG5n");
         assert_eq!(payload["bridgeState"]["sessionId"], "sess-1");
         assert_eq!(payload["timestamp"], "2026-03-19T00:00:00.000Z");
+    }
+
+    #[test]
+    fn rejects_overlapping_document_actions_for_the_same_session() {
+        begin_session_document_action("sess-1").expect("first action should acquire the guard");
+
+        let error = begin_session_document_action("sess-1")
+            .expect_err("second overlapping action should be rejected");
+
+        assert_eq!(error.code, "SESSION_BUSY");
+        end_session_document_action("sess-1");
     }
 }
