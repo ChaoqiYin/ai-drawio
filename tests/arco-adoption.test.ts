@@ -20,5 +20,5 @@ test("session workspace uses inline utilities for page shell spacing", async () 
   const source = await readFile(SESSION_SOURCE_PATH, "utf8");
 
   assert.match(source, /flex flex-col h-full min-h-full p-\[18px\] lg:p-\[22px\]/);
-  assert.match(source, /<Header className="mb-\[14px\]! h-auto bg-transparent p-0" data-layout="workspace-head">/);
+  assert.doesNotMatch(source, /workspace-head/);
 });

@@ -32,12 +32,17 @@ test("conversation home source includes delete actions", async () => {
   assert.match(source, /consumeHomeRedirectError/);
   assert.match(source, /subscribeConversationChanges/);
   assert.match(source, /updateConversationTitle/);
+  assert.match(source, /useWorkspaceSessionStore/);
   assert.match(source, /navigationTarget/);
   assert.match(source, /shouldSuppressNavigation/);
   assert.match(source, /suppressNavigationForDelete/);
   assert.match(source, /openConversation/);
   assert.match(source, /if \(shouldSuppressNavigation\(\)\) \{/);
-  assert.match(source, /setNavigationTarget\(title\)/);
+  assert.match(source, /enterSessionDetail/);
+  assert.match(source, /setNavigationTarget\(conversation\.title\)/);
+  assert.match(source, /router\.push\("\/session"\)/);
+  assert.doesNotMatch(source, /onOpenSessionTab/);
+  assert.doesNotMatch(source, /ConversationHomeProps/);
   assert.match(source, /internal-app-shell/);
   assert.match(source, /px-3! py-3! md:px-5! md:py-5!/);
   assert.match(source, /internal-page-list-card/);
@@ -95,4 +100,5 @@ test("conversation home source includes delete actions", async () => {
   assert.doesNotMatch(source, /internal-page-section-card/);
   assert.doesNotMatch(source, /internal-page-overlay-card/);
   assert.doesNotMatch(source, /window\.confirm/);
+  assert.doesNotMatch(source, /router\.push\(buildSessionHref\(conversationId\)\)/);
 });

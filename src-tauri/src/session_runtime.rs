@@ -34,6 +34,17 @@ pub struct SessionListEntry {
     pub title: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionRuntimeState {
+    #[serde(default)]
+    pub is_ready: bool,
+    #[serde(default)]
+    pub session_id: String,
+    #[serde(default)]
+    pub status: String,
+}
+
 pub fn build_session_route(session_id: &str) -> String {
     format!("/session?id={session_id}")
 }
@@ -355,6 +366,38 @@ return window.__AI_DRAWIO_SHELL__?.getState?.() ?? null;
         .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))
 }
 
+pub fn get_session_runtime_state(
+    app: &AppHandle,
+    bridge_state: &ScriptResultBridgeState,
+    session_id: &str,
+    timeout: Duration,
+) -> Result<SessionRuntimeState, ControlError> {
+    let session_id_json = serde_json::to_string(session_id)
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+
+    let value = eval_main_window_script_with_result(
+        app,
+        bridge_state,
+        &format!(
+            r#"
+return window.__AI_DRAWIO_SHELL__?.sessions?.[{session_id_json}]?.getState?.() ?? null;
+"#
+        ),
+        timeout,
+    )
+    .map_err(|error| ControlError::new("APP_NOT_READY", error))?;
+
+    if value.is_null() {
+        return Err(ControlError::new(
+            "SESSION_NOT_READY",
+            format!("session runtime '{session_id}' is not registered"),
+        ));
+    }
+
+    serde_json::from_value(value)
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))
+}
+
 pub fn ensure_session(
     app: &AppHandle,
     bridge_state: &ScriptResultBridgeState,
@@ -397,10 +440,8 @@ pub fn open_session(
 ) -> Result<ShellState, ControlError> {
     show_main_window(app)?;
 
-    if let Ok(state) = get_shell_state(app, bridge_state, Duration::from_secs(2)) {
-        if get_active_session_id(&state).as_deref() == Some(session_id) && is_reusable_session_state(&state) {
-            return Ok(state);
-        }
+    if let Ok(state) = require_session_ready(app, bridge_state, session_id, Duration::from_secs(2)) {
+        return Ok(state);
     }
 
     if !has_conversation(app, bridge_state, session_id, timeout)? {
@@ -444,37 +485,57 @@ pub fn open_session_by_title(
     open_session(app, bridge_state, &session_id, timeout)
 }
 
-pub fn require_active_session(
+pub fn require_session_ready(
     app: &AppHandle,
     bridge_state: &ScriptResultBridgeState,
     session_id: &str,
     timeout: Duration,
 ) -> Result<ShellState, ControlError> {
-    let state = get_shell_state(app, bridge_state, timeout)?;
+    let runtime_state = get_session_runtime_state(app, bridge_state, session_id, timeout)?;
 
-    if state.session_id != session_id {
+    if runtime_state.session_id.trim().is_empty() || runtime_state.session_id != session_id {
         return Err(ControlError::new(
-            "SESSION_NOT_OPEN",
-            format!("active session is '{}'", state.session_id),
+            "SESSION_NOT_READY",
+            format!("session runtime '{session_id}' did not report the requested session id"),
         )
         .with_details(json!({
-            "activeSessionId": state.session_id,
+            "reportedSessionId": runtime_state.session_id,
             "requestedSessionId": session_id
         })));
     }
 
-    if !state.bridge_ready || !state.frame_ready {
+    if !runtime_state.is_ready {
         return Err(ControlError::new(
             "FRAME_NOT_READY",
             "draw.io iframe bridge is not ready",
         )
         .with_details(json!({
-            "bridgeReady": state.bridge_ready,
-            "frameReady": state.frame_ready
+            "requestedSessionId": session_id,
+            "status": runtime_state.status
         })));
     }
 
-    Ok(state)
+    let fallback_shell_state = get_shell_state(app, bridge_state, Duration::from_secs(2)).unwrap_or(ShellState {
+        bootstrap_error: None,
+        bridge_ready: true,
+        conversation_loaded: true,
+        document_loaded: true,
+        frame_ready: true,
+        last_event: runtime_state.status.clone(),
+        route: build_session_route(session_id),
+        session_id: session_id.to_string(),
+    });
+
+    Ok(ShellState {
+        bootstrap_error: fallback_shell_state.bootstrap_error,
+        bridge_ready: true,
+        conversation_loaded: fallback_shell_state.conversation_loaded,
+        document_loaded: fallback_shell_state.document_loaded,
+        frame_ready: true,
+        last_event: runtime_state.status,
+        route: fallback_shell_state.route,
+        session_id: session_id.to_string(),
+    })
 }
 
 fn wait_for_session_ready(
@@ -496,6 +557,10 @@ fn wait_for_session_ready(
             }
         }
 
+        if let Ok(state) = require_session_ready(app, bridge_state, session_id, Duration::from_secs(2)) {
+            return Ok(state);
+        }
+
         thread::sleep(poll_interval);
     }
 
@@ -510,12 +575,25 @@ fn wait_for_session_ready(
 mod tests {
     use super::{
         build_session_route, extract_session_id_from_route, get_active_session_id,
-        is_reusable_session_state, ShellState,
+        is_reusable_session_state, SessionRuntimeState, ShellState,
     };
 
     #[test]
     fn builds_session_route() {
         assert_eq!(build_session_route("sess-1"), "/session?id=sess-1");
+    }
+
+    #[test]
+    fn session_runtime_state_serializes_with_ready_fields() {
+        let state = SessionRuntimeState {
+            is_ready: true,
+            session_id: "sess-1".to_string(),
+            status: "idle".to_string(),
+        };
+
+        assert!(state.is_ready);
+        assert_eq!(state.session_id, "sess-1");
+        assert_eq!(state.status, "idle");
     }
 
     #[test]
