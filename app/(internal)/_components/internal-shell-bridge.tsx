@@ -84,7 +84,6 @@ type ShellWindow = Window &
 
 function buildIdleShellState(): ShellState {
   const route = `${window.location.pathname}${window.location.search}`;
-  const sessionId = new URLSearchParams(window.location.search).get("id") || "";
 
   return {
     bootstrapError: null,
@@ -96,7 +95,7 @@ function buildIdleShellState(): ShellState {
     frameReady: false,
     lastEvent: "idle",
     route,
-    sessionId
+    sessionId: ""
   };
 }
 

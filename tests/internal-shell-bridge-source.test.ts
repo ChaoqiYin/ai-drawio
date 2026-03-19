@@ -28,4 +28,6 @@ test("internal shell bridge exposes shared session orchestration helpers", async
   assert.match(source, /__AI_DRAWIO_SHELL__/);
   assert.match(source, /router\.push/);
   assert.match(source, /conversationStore/);
+  assert.doesNotMatch(source, /URLSearchParams\(window\.location\.search\)\.get\("id"\)/);
+  assert.doesNotMatch(source, /\/session\?id=/);
 });

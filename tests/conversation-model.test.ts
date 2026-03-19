@@ -47,7 +47,7 @@ test("getConversationPreview uses the latest message content", () => {
 });
 
 test("buildSessionHref targets the session route", () => {
-  assert.equal(buildSessionHref("sess-1"), "/session?id=sess-1");
+  assert.equal(buildSessionHref("sess-1"), "/session");
 });
 
 test("buildNextConversationTitle increments the highest matching suffix", () => {

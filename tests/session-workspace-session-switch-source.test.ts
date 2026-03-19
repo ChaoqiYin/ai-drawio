@@ -34,5 +34,6 @@ test("session tabs shell keeps one mounted host per opened session and only hide
   assert.match(hostSource, /<SessionWorkspace hidden=\{hidden\} sessionId=\{sessionId\} \/>/);
 
   assert.match(workspaceSource, /sessionId: providedSessionId/);
-  assert.match(workspaceSource, /const sessionId = providedSessionId \?\? searchParams\.get\('id'\);/);
+  assert.match(workspaceSource, /const sessionId = providedSessionId \|\| '';/);
+  assert.doesNotMatch(workspaceSource, /useSearchParams/);
 });
