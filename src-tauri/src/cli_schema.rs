@@ -66,6 +66,24 @@ pub fn build_cli_command() -> Command {
                         ),
                 )
                 .subcommand(
+                    Command::new("document.preview")
+                        .about("Export the current draw.io document as per-page PNG preview images")
+                        .arg(
+                            Arg::new("output-directory")
+                                .index(1)
+                                .value_name("output-directory")
+                                .required(true),
+                        )
+                        .arg(Arg::new("session").long("session").value_name("session-id"))
+                        .arg(
+                            Arg::new("session-title")
+                                .long("session-title")
+                                .value_name("session-title")
+                                .conflicts_with("session"),
+                        )
+                        .arg(Arg::new("page").long("page").value_name("page-number")),
+                )
+                .subcommand(
                     Command::new("document.apply")
                         .about("Apply a draw.io document to the resolved session")
                         .arg(Arg::new("prompt").index(1).value_name("prompt").required(true))

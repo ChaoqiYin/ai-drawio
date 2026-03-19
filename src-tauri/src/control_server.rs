@@ -163,6 +163,17 @@ fn handle_request(app: &AppHandle, request: ControlRequest) -> ControlResponse {
                 document_bridge::export_svg_pages(app, &bridge_state, &session_id, timeout)
             })
         }
+        CommandKind::CanvasDocumentPreview => {
+            let session_id = request
+                .require_session_id()
+                .map_err(|error| error)
+                .map(str::to_string);
+            let _page = request.payload.get("page").and_then(Value::as_u64);
+
+            session_id.and_then(|session_id| {
+                document_bridge::export_preview_pages(app, &bridge_state, &session_id, timeout)
+            })
+        }
         CommandKind::CanvasDocumentApply => {
             let session_id = request
                 .require_session_id()

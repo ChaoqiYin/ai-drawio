@@ -1,11 +1,14 @@
 use crate::cli_schema::build_cli_command;
 use crate::control_protocol::{CommandSource, ControlError, ControlRequest, ControlResponse};
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine;
 use clap::ArgMatches;
 use serde_json::{json, Map, Value};
 use std::env;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const CLI_SOURCE_NAME: &str = "ai-drawio";
@@ -31,6 +34,11 @@ pub enum PackagedCliCommand {
     CanvasDocumentSvg {
         locator: Option<SessionLocator>,
         output_file: Option<String>,
+    },
+    CanvasDocumentPreview {
+        locator: Option<SessionLocator>,
+        output_directory: String,
+        page: Option<usize>,
     },
     CanvasDocumentApply {
         locator: Option<SessionLocator>,
@@ -117,6 +125,13 @@ fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
                 locator: parse_optional_locator(svg_matches, "session", "session-title"),
                 output_file: string_arg(svg_matches, "output-file"),
             }),
+            Some(("document.preview", preview_matches)) => {
+                Ok(PackagedCliCommand::CanvasDocumentPreview {
+                    locator: parse_optional_locator(preview_matches, "session", "session-title"),
+                    output_directory: required_string_arg(preview_matches, "output-directory")?,
+                    page: optional_positive_usize_arg(preview_matches, "page")?,
+                })
+            }
             Some(("document.apply", apply_matches)) => Ok(PackagedCliCommand::CanvasDocumentApply {
                 locator: parse_optional_locator(apply_matches, "session", "session-title"),
                 xml: string_arg(apply_matches, "xml"),
@@ -136,7 +151,7 @@ fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
                 })
             }
             _ => Err(
-                "canvas only supports document.get, document.svg, document.apply or document.restore"
+                "canvas only supports document.get, document.svg, document.preview, document.apply or document.restore"
                     .to_string(),
             ),
         },
@@ -148,6 +163,7 @@ pub fn build_resolution_request(command: &PackagedCliCommand) -> Option<ControlR
     let locator = match command {
         PackagedCliCommand::CanvasDocumentGet { locator, .. } => locator.as_ref(),
         PackagedCliCommand::CanvasDocumentSvg { locator, .. } => locator.as_ref(),
+        PackagedCliCommand::CanvasDocumentPreview { locator, .. } => locator.as_ref(),
         PackagedCliCommand::CanvasDocumentApply { locator, .. } => locator.as_ref(),
         PackagedCliCommand::CanvasDocumentRestore { locator, .. } => locator.as_ref(),
         _ => return None,
@@ -224,6 +240,20 @@ pub fn build_request_for_command(
             json!({}),
             CONTROL_TIMEOUT_MS,
         )),
+        PackagedCliCommand::CanvasDocumentPreview { page, .. } => {
+            let mut payload = Map::new();
+
+            if let Some(page) = page {
+                payload.insert("page".to_string(), json!(page));
+            }
+
+            Ok(build_request(
+                "canvas.document.preview",
+                session_id,
+                Value::Object(payload),
+                CONTROL_TIMEOUT_MS,
+            ))
+        }
         PackagedCliCommand::CanvasDocumentApply {
             xml,
             xml_file,
@@ -435,6 +465,15 @@ fn maybe_write_output_file(
     command: &PackagedCliCommand,
     response: &mut ControlResponse,
 ) -> Result<(), String> {
+    if let PackagedCliCommand::CanvasDocumentPreview {
+        output_directory,
+        page,
+        ..
+    } = command
+    {
+        return maybe_write_preview_pages(output_directory, *page, response);
+    }
+
     let output_file = match command {
         PackagedCliCommand::CanvasDocumentGet { output_file, .. } => output_file.as_ref(),
         PackagedCliCommand::CanvasDocumentSvg { output_file, .. } => output_file.as_ref(),
@@ -503,6 +542,104 @@ fn maybe_write_output_file(
         .map_err(|error| format!("failed to write output file '{output_file}': {error}"))
 }
 
+fn maybe_write_preview_pages(
+    output_directory: &str,
+    selected_page: Option<usize>,
+    response: &mut ControlResponse,
+) -> Result<(), String> {
+    let Some(pages) = response
+        .data
+        .as_ref()
+        .and_then(|value| value.get("pages"))
+        .and_then(Value::as_array)
+        .cloned()
+    else {
+        return Ok(());
+    };
+
+    let selected_indexes = if let Some(selected_page) = selected_page {
+        if selected_page == 0 || selected_page > pages.len() {
+            response.ok = false;
+            response.data = None;
+            response.error = Some(
+                ControlError::new(
+                    "PAGE_OUT_OF_RANGE",
+                    format!("requested page {selected_page} is out of range"),
+                )
+                .with_details(json!({
+                    "requestedPage": selected_page,
+                    "pageCount": pages.len()
+                })),
+            );
+
+            return Ok(());
+        }
+
+        vec![selected_page - 1]
+    } else {
+        (0..pages.len()).collect::<Vec<_>>()
+    };
+
+    fs::create_dir_all(output_directory)
+        .map_err(|error| format!("failed to create output directory '{output_directory}': {error}"))?;
+
+    let mut updated_pages = Vec::with_capacity(selected_indexes.len());
+
+    for index in selected_indexes {
+        let page = &pages[index];
+        let page_name = page
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim();
+        let png_data_uri = page
+            .get("pngDataUri")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim();
+
+        if png_data_uri.is_empty() {
+            continue;
+        }
+
+        let png_bytes = decode_png_data_uri(png_data_uri)?;
+        let file_name = build_preview_page_file_name(index, page_name);
+        let output_path = PathBuf::from(output_directory).join(file_name);
+        fs::write(&output_path, png_bytes).map_err(|error| {
+            format!(
+                "failed to write preview output file '{}': {error}",
+                output_path.display()
+            )
+        })?;
+
+        let absolute_output_path = fs::canonicalize(&output_path)
+            .unwrap_or(output_path.clone())
+            .display()
+            .to_string();
+
+        let mut updated_page = page.as_object().cloned().unwrap_or_default();
+        updated_page.remove("pngDataUri");
+        updated_page.insert("index".to_string(), json!(index + 1));
+        updated_page.insert("path".to_string(), Value::String(absolute_output_path));
+        updated_pages.push(Value::Object(updated_page));
+    }
+
+    if let Some(Value::Object(data)) = response.data.as_mut() {
+        data.insert(
+            "outputDir".to_string(),
+            Value::String(
+                fs::canonicalize(output_directory)
+                    .unwrap_or_else(|_| PathBuf::from(output_directory))
+                    .display()
+                    .to_string(),
+            ),
+        );
+        data.insert("pages".to_string(), Value::Array(updated_pages));
+    }
+
+    Ok(())
+}
+
 fn sanitize_svg_page_name(name: &str) -> String {
     name
         .trim()
@@ -523,6 +660,35 @@ fn build_svg_page_file_name(index: usize, page_name: &str) -> String {
     } else {
         format!("{page_number}-{sanitized_name}.svg")
     }
+}
+
+fn build_preview_page_file_name(index: usize, page_name: &str) -> String {
+    let page_number = format!("{:02}", index + 1);
+    let sanitized_name = sanitize_svg_page_name(page_name);
+
+    if sanitized_name.is_empty() {
+        format!("page-{page_number}.png")
+    } else {
+        format!("{page_number}-{sanitized_name}.png")
+    }
+}
+
+fn decode_png_data_uri(data_uri: &str) -> Result<Vec<u8>, String> {
+    let Some((header, encoded)) = data_uri.split_once(',') else {
+        return Err("preview png data uri is invalid".to_string());
+    };
+
+    if !header.starts_with("data:image/png") {
+        return Err("preview png data uri must start with data:image/png".to_string());
+    }
+
+    if header.contains(";base64") {
+        return BASE64_STANDARD
+            .decode(encoded)
+            .map_err(|error| format!("failed to decode preview png data: {error}"));
+    }
+
+    Ok(encoded.as_bytes().to_vec())
 }
 
 fn require_apply_prompt(prompt: &Option<String>) -> Result<String, String> {
@@ -581,6 +747,7 @@ fn command_name(command: &PackagedCliCommand) -> &'static str {
         PackagedCliCommand::SessionOpen { .. } => "session.open",
         PackagedCliCommand::CanvasDocumentGet { .. } => "canvas.document.get",
         PackagedCliCommand::CanvasDocumentSvg { .. } => "canvas.document.svg",
+        PackagedCliCommand::CanvasDocumentPreview { .. } => "canvas.document.preview",
         PackagedCliCommand::CanvasDocumentApply { .. } => "canvas.document.apply",
         PackagedCliCommand::CanvasDocumentRestore { .. } => "canvas.document.restore",
     }
@@ -615,6 +782,26 @@ fn print_json_value(value: &Value) {
 
 fn string_arg(matches: &ArgMatches, name: &str) -> Option<String> {
     matches.get_one::<String>(name).cloned()
+}
+
+fn required_string_arg(matches: &ArgMatches, name: &str) -> Result<String, String> {
+    string_arg(matches, name).ok_or_else(|| format!("missing required argument '{name}'"))
+}
+
+fn optional_positive_usize_arg(matches: &ArgMatches, name: &str) -> Result<Option<usize>, String> {
+    let Some(value) = string_arg(matches, name) else {
+        return Ok(None);
+    };
+
+    let parsed = value
+        .parse::<usize>()
+        .map_err(|_| format!("invalid value for --{name}: '{value}'"))?;
+
+    if parsed == 0 {
+        return Err(format!("--{name} must be greater than 0"));
+    }
+
+    Ok(Some(parsed))
 }
 
 fn parse_required_locator(
@@ -805,6 +992,70 @@ mod tests {
     }
 
     #[test]
+    fn parses_document_preview_with_output_directory() {
+        let command = parse_cli_args(&["canvas", "document.preview", "./previews"])
+            .expect("document preview should parse");
+
+        assert_eq!(
+            command,
+            PackagedCliCommand::CanvasDocumentPreview {
+                locator: None,
+                output_directory: "./previews".to_string(),
+                page: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_document_preview_with_selected_page() {
+        let command = parse_cli_args(&[
+            "canvas",
+            "document.preview",
+            "./previews",
+            "--page",
+            "2",
+        ])
+        .expect("document preview with page should parse");
+
+        assert_eq!(
+            command,
+            PackagedCliCommand::CanvasDocumentPreview {
+                locator: None,
+                output_directory: "./previews".to_string(),
+                page: Some(2),
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_document_preview_without_output_directory() {
+        let error = parse_cli_args(&["canvas", "document.preview"])
+            .expect_err("document preview requires an output directory");
+
+        assert!(
+            error.contains("output-directory") || error.contains("required"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn rejects_document_preview_with_zero_page() {
+        let error = parse_cli_args(&[
+            "canvas",
+            "document.preview",
+            "./previews",
+            "--page",
+            "0",
+        ])
+        .expect_err("document preview should reject page zero");
+
+        assert!(
+            error.contains("page") || error.contains("0"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
     fn rejects_document_apply_when_both_input_modes_are_provided() {
         let error = parse_cli_args(&[
             "canvas",
@@ -977,6 +1228,171 @@ mod tests {
     }
 
     #[test]
+    fn writes_preview_pages_to_directory_and_sets_paths() {
+        let output_dir = std::env::temp_dir().join(format!(
+            "ai-drawio-preview-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let mut response = ControlResponse {
+            command: "canvas.document.preview".to_string(),
+            data: Some(json!({
+                "pages": [
+                    {
+                        "id": "page-1",
+                        "name": "首页/流程图",
+                        "pngDataUri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
+                    }
+                ]
+            })),
+            error: None,
+            ok: true,
+            request_id: "req-1".to_string(),
+            session_id: Some("sess-1".to_string()),
+        };
+
+        maybe_write_output_file(
+            &PackagedCliCommand::CanvasDocumentPreview {
+                locator: None,
+                output_directory: output_dir.display().to_string(),
+                page: None,
+            },
+            &mut response,
+        )
+        .expect("preview pages should be written");
+
+        let output_path = response.data.as_ref().and_then(|value| {
+            value.get("pages")
+                .and_then(|pages| pages.get(0))
+                .and_then(|page| page.get("path"))
+                .and_then(|path| path.as_str())
+                .map(str::to_string)
+        });
+
+        assert!(output_path.is_some());
+        assert!(std::path::Path::new(output_path.as_deref().unwrap_or_default()).is_absolute());
+        assert!(output_dir.join("01-首页-流程图.png").exists());
+
+        let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[test]
+    fn writes_only_the_selected_preview_page() {
+        let output_dir = std::env::temp_dir().join(format!(
+            "ai-drawio-preview-page-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let mut response = ControlResponse {
+            command: "canvas.document.preview".to_string(),
+            data: Some(json!({
+                "pages": [
+                    {
+                        "id": "page-1",
+                        "name": "Page 1",
+                        "pngDataUri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
+                    },
+                    {
+                        "id": "page-2",
+                        "name": "Page 2",
+                        "pngDataUri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
+                    }
+                ]
+            })),
+            error: None,
+            ok: true,
+            request_id: "req-2".to_string(),
+            session_id: Some("sess-1".to_string()),
+        };
+
+        maybe_write_output_file(
+            &PackagedCliCommand::CanvasDocumentPreview {
+                locator: None,
+                output_directory: output_dir.display().to_string(),
+                page: Some(2),
+            },
+            &mut response,
+        )
+        .expect("selected preview page should be written");
+
+        assert!(!output_dir.join("01-Page 1.png").exists());
+        assert!(output_dir.join("02-Page 2.png").exists());
+
+        let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[test]
+    fn reports_page_out_of_range_for_preview_exports() {
+        let output_dir = std::env::temp_dir().join(format!(
+            "ai-drawio-preview-overflow-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let mut response = ControlResponse {
+            command: "canvas.document.preview".to_string(),
+            data: Some(json!({
+                "pages": [
+                    {
+                        "id": "page-1",
+                        "name": "Page 1",
+                        "pngDataUri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
+                    },
+                    {
+                        "id": "page-2",
+                        "name": "Page 2",
+                        "pngDataUri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
+                    }
+                ]
+            })),
+            error: None,
+            ok: true,
+            request_id: "req-3".to_string(),
+            session_id: Some("sess-1".to_string()),
+        };
+
+        maybe_write_output_file(
+            &PackagedCliCommand::CanvasDocumentPreview {
+                locator: None,
+                output_directory: output_dir.display().to_string(),
+                page: Some(3),
+            },
+            &mut response,
+        )
+        .expect("overflow handling should return a structured response");
+
+        assert!(!response.ok);
+        assert_eq!(
+            response.error.as_ref().map(|error| error.code.as_str()),
+            Some("PAGE_OUT_OF_RANGE")
+        );
+        assert_eq!(
+            response
+                .error
+                .as_ref()
+                .and_then(|error| error.details.as_ref())
+                .and_then(|details| details.get("requestedPage"))
+                .and_then(|value| value.as_u64()),
+            Some(3)
+        );
+        assert_eq!(
+            response
+                .error
+                .as_ref()
+                .and_then(|error| error.details.as_ref())
+                .and_then(|details| details.get("pageCount"))
+                .and_then(|value| value.as_u64()),
+            Some(2)
+        );
+        assert!(!output_dir.exists());
+    }
+
+    #[test]
     fn status_not_running_response_reports_manual_launch_requirement() {
         let response = build_status_not_running_response();
 
@@ -1023,6 +1439,11 @@ mod tests {
             PackagedCliCommand::CanvasDocumentSvg {
                 locator: None,
                 output_file: None,
+            },
+            PackagedCliCommand::CanvasDocumentPreview {
+                locator: None,
+                output_directory: "./previews".to_string(),
+                page: None,
             },
             PackagedCliCommand::CanvasDocumentApply {
                 locator: None,

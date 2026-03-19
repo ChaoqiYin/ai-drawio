@@ -13,6 +13,7 @@ pub enum CommandKind {
     Status,
     CanvasDocumentApply,
     CanvasDocumentGet,
+    CanvasDocumentPreview,
     CanvasDocumentRestore,
     CanvasDocumentSvg,
 }
@@ -66,6 +67,7 @@ impl ControlRequest {
         match self.command.trim() {
             "canvas.document.apply" => Ok(CommandKind::CanvasDocumentApply),
             "canvas.document.get" => Ok(CommandKind::CanvasDocumentGet),
+            "canvas.document.preview" => Ok(CommandKind::CanvasDocumentPreview),
             "canvas.document.restore" => Ok(CommandKind::CanvasDocumentRestore),
             "canvas.document.svg" => Ok(CommandKind::CanvasDocumentSvg),
             "conversation.create" => Ok(CommandKind::ConversationCreate),
@@ -141,6 +143,22 @@ impl ControlRequest {
                         return Err(ControlError::new(
                             "VALIDATION_FAILED",
                             "payload.prompt cannot be empty",
+                        ));
+                    }
+                }
+            }
+            CommandKind::CanvasDocumentPreview => {
+                self.require_session_id()?;
+
+                if let Some(page) = self.payload.get("page") {
+                    let page = page.as_u64().ok_or_else(|| {
+                        ControlError::new("VALIDATION_FAILED", "payload.page must be a positive integer")
+                    })?;
+
+                    if page == 0 {
+                        return Err(ControlError::new(
+                            "VALIDATION_FAILED",
+                            "payload.page must be greater than 0",
                         ));
                     }
                 }
@@ -322,6 +340,34 @@ mod tests {
         let command = request.validate().expect("request should validate");
 
         assert_eq!(command, CommandKind::CanvasDocumentSvg);
+    }
+
+    #[test]
+    fn validates_document_preview_requests() {
+        let mut request = base_request("canvas.document.preview");
+        request.session_id = Some("sess-1".to_string());
+        request.payload = json!({
+            "page": 2
+        });
+
+        let command = request.validate().expect("request should validate");
+
+        assert_eq!(command, CommandKind::CanvasDocumentPreview);
+    }
+
+    #[test]
+    fn rejects_document_preview_requests_with_zero_page() {
+        let mut request = base_request("canvas.document.preview");
+        request.session_id = Some("sess-1".to_string());
+        request.payload = json!({
+            "page": 0
+        });
+
+        let error = request
+            .validate()
+            .expect_err("page zero should fail validation");
+
+        assert_eq!(error.code, "VALIDATION_FAILED");
     }
 
     #[test]

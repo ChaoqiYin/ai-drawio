@@ -60,6 +60,10 @@ The desktop app starts on a local AI conversation history page and opens draw.io
   Automatically ensures there is a ready session detail page before reading the document.
 - `ai-drawio canvas document.get --session <conversation-id>`
   Uses a strict explicit session override.
+- `ai-drawio canvas document.preview <output-directory>`
+  Exports every page of the current draw.io document as PNG preview files into the required output directory and returns JSON with absolute file paths.
+- `ai-drawio canvas document.preview <output-directory> --page <page-number>`
+  Exports only the selected 1-based page as a PNG preview file into the required output directory and returns JSON with the generated file path.
 - `ai-drawio canvas document.apply <prompt> '<mxfile>...</mxfile>'`
   Treats the first positional argument as the required request summary and the second positional argument as inline XML content before applying the document.
 - `ai-drawio canvas document.apply <prompt> --xml-file <path>`

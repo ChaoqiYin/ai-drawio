@@ -36,6 +36,7 @@ test("packaged tauri cli wires plugin, parser, and completion generation", async
   assert.match(tauriConfig, /"cli"\s*:/);
   assert.match(tauriConfig, /"document\.apply"/);
   assert.match(packagedCliSource, /document\.svg/);
+  assert.match(packagedCliSource, /document\.preview/);
   assert.match(packagedCliSource, /session open <session-id>|session-id/);
   assert.match(packagedCliSource, /xml-stdin/);
   assert.doesNotMatch(packagedCliSource, /\bPackagedCliCommand::Open\b/);
@@ -62,6 +63,8 @@ test("package scripts keep direct tauri build entrypoints without wrapper shell 
   assert.match(tauriConfig, /"SharedSupport\/cli-completions\/ai-drawio\.fish"/);
   assert.match(readme, /npm run build -- --bundles dmg/);
   assert.match(readme, /Install ai-drawio into PATH/);
+  assert.match(readme, /ai-drawio canvas document\.preview <output-directory>/);
+  assert.match(readme, /ai-drawio canvas document\.preview <output-directory> --page <page-number>/);
   assert.doesNotMatch(readme, /ai-drawio open/);
 });
 

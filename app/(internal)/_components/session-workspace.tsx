@@ -90,9 +90,28 @@ type FrameMessage = {
 };
 
 type EditorUiInstance = {
+  createImageDataUri?: (canvas: HTMLCanvasElement, xml: string | null, format: string, dpi?: number) => string;
   emptyDiagramXml?: string;
   currentPage?: { getId?: () => string };
-  editor?: { modified?: unknown };
+  editor?: { graph?: unknown; modified?: unknown };
+  exportToCanvas?: (
+    callback: (canvas: HTMLCanvasElement) => void,
+    width?: number | null,
+    imageCache?: unknown,
+    background?: unknown,
+    error?: (error?: unknown) => void,
+    limitHeight?: unknown,
+    ignoreSelection?: unknown,
+    scale?: unknown,
+    transparentBackground?: boolean,
+    addShadow?: boolean,
+    converter?: unknown,
+    graph?: unknown,
+    border?: unknown,
+    noCrop?: unknown,
+    grid?: unknown,
+    theme?: unknown,
+  ) => void;
   fileLoaded?: (file: unknown) => void;
   getCurrentFile?: () => { getTitle?: () => string } | null;
   getFileData: (includeAllPages: boolean) => string;
@@ -101,6 +120,18 @@ type EditorUiInstance = {
 
 type EditorUiPrototype = {
   aiDrawioApplyDocument?: (this: EditorUiInstance, xml: string) => string;
+  aiDrawioBuildPngPreviewPages?: (
+    this: EditorUiInstance,
+    xml: string,
+    success: (result: {
+      pages: Array<{
+        id: string;
+        name: string;
+        pngDataUri: string;
+      }>;
+    }) => void,
+    failure: (message?: string) => void,
+  ) => void;
   aiDrawioBuildSvgPreviewPages?: (this: EditorUiInstance, xml: string) => { pages: CanvasHistoryPreviewPage[] };
   aiDrawioEnsureBrowserFile?: (
     this: EditorUiInstance,
@@ -187,6 +218,14 @@ type ShellWindow = Window &
             id: string;
             name: string;
             svg: string;
+          }>;
+        }>;
+        exportPreviewPages: () => Promise<{
+          exportedAt: string;
+          pages: Array<{
+            id: string;
+            name: string;
+            pngDataUri: string;
           }>;
         }>;
         getDocument: () => Promise<{ readAt: string; xml: string }>;
@@ -364,6 +403,7 @@ function installDocumentRemoteInvokes(frameWindow: DrawioFrameWindow | null | un
   editorUiPrototype.remoteInvokableFns = {
     ...(editorUiPrototype.remoteInvokableFns || {}),
     aiDrawioApplyDocument: { isAsync: false },
+    aiDrawioBuildPngPreviewPages: { isAsync: true },
     aiDrawioBuildSvgPreviewPages: { isAsync: false },
     aiDrawioEnsureBrowserFile: { isAsync: true },
     aiDrawioGetDocument: { isAsync: false },
@@ -430,6 +470,152 @@ function installDocumentRemoteInvokes(frameWindow: DrawioFrameWindow | null | un
           };
         }),
       };
+    };
+
+  editorUiPrototype.aiDrawioBuildPngPreviewPages =
+    editorUiPrototype.aiDrawioBuildPngPreviewPages ||
+    function aiDrawioBuildPngPreviewPages(xml, success, failure) {
+      if (typeof xml !== 'string' || xml.trim().length === 0) {
+        failure('preview xml cannot be empty');
+        return;
+      }
+
+      const ui = this as EditorUiInstance & {
+        createTemporaryGraph?: (stylesheet: unknown) => {
+          container: HTMLDivElement;
+          getGlobalVariable: (...args: unknown[]) => unknown;
+          model: { setRoot: (root: unknown) => void };
+          setAdaptiveColors: (value: unknown) => void;
+        };
+        getPageIndex?: (page: unknown) => number;
+        getPagesForXml?: (payload: string) => Array<{
+          getId?: () => string;
+          getName?: () => string;
+          root?: unknown;
+          viewState?: { adaptiveColors?: unknown };
+        }>;
+        updatePageRoot?: (page: unknown) => void;
+      };
+      const sourceGraph = (ui.editor as { graph?: unknown } | undefined)?.graph as
+        | {
+            getGlobalVariable?: (...args: unknown[]) => unknown;
+            getStylesheet?: () => unknown;
+          }
+        | undefined;
+
+      if (
+        typeof ui.getPagesForXml !== 'function' ||
+        typeof ui.createTemporaryGraph !== 'function' ||
+        typeof ui.updatePageRoot !== 'function' ||
+        typeof ui.exportToCanvas !== 'function' ||
+        typeof ui.createImageDataUri !== 'function' ||
+        !sourceGraph ||
+        typeof sourceGraph.getStylesheet !== 'function'
+      ) {
+        failure('draw.io preview APIs are not available');
+        return;
+      }
+
+      const pages = ui.getPagesForXml(xml);
+
+      if (!Array.isArray(pages) || pages.length === 0) {
+        failure('draw.io preview did not return any pages');
+        return;
+      }
+
+      const exportPageAtIndex = (index: number, exportedPages: Array<{ id: string; name: string; pngDataUri: string }>) => {
+        if (index >= pages.length) {
+          success({ pages: exportedPages });
+          return;
+        }
+
+        const page = pages[index];
+        const tempGraph = ui.createTemporaryGraph?.(sourceGraph.getStylesheet());
+
+        if (!tempGraph) {
+          failure('draw.io preview graph is not available');
+          return;
+        }
+
+        const graphGetGlobalVariable =
+          typeof sourceGraph.getGlobalVariable === 'function'
+            ? sourceGraph.getGlobalVariable.bind(sourceGraph)
+            : () => undefined;
+        const pageIndex = typeof ui.getPageIndex === 'function' ? ui.getPageIndex(page) : index;
+
+        tempGraph.getGlobalVariable = function getGlobalVariable(name: unknown) {
+          if (name === 'pagenumber') {
+            return pageIndex + 1;
+          }
+
+          if (name === 'page' && typeof page?.getName === 'function') {
+            return page.getName();
+          }
+
+          return graphGetGlobalVariable(name);
+        };
+
+        document.body.appendChild(tempGraph.container);
+
+        const cleanup = () => {
+          if (tempGraph.container.parentNode) {
+            tempGraph.container.parentNode.removeChild(tempGraph.container);
+          }
+        };
+
+        try {
+          ui.updatePageRoot(page);
+          tempGraph.setAdaptiveColors(page?.viewState?.adaptiveColors);
+          tempGraph.model.setRoot(page?.root);
+        } catch (error) {
+          cleanup();
+          failure(toErrorMessage(error, 'draw.io preview export failed'));
+          return;
+        }
+
+        ui.exportToCanvas(
+          (canvas) => {
+            try {
+              const pngDataUri = ui.createImageDataUri?.(canvas, null, 'png');
+              const pageId = typeof page?.getId === 'function' ? page.getId()?.trim() || '' : '';
+              const pageName = typeof page?.getName === 'function' ? page.getName()?.trim() || '' : '';
+
+              if (!pngDataUri?.startsWith('data:image/png')) {
+                throw new Error('draw.io preview did not return a PNG image');
+              }
+
+              cleanup();
+              exportPageAtIndex(index + 1, [
+                ...exportedPages,
+                {
+                  id: pageId || `page-${index + 1}`,
+                  name: pageName || `Page ${index + 1}`,
+                  pngDataUri,
+                },
+              ]);
+            } catch (error) {
+              cleanup();
+              failure(toErrorMessage(error, 'draw.io preview export failed'));
+            }
+          },
+          null,
+          null,
+          null,
+          (error) => {
+            cleanup();
+            failure(toErrorMessage(error, 'draw.io preview export failed'));
+          },
+          null,
+          null,
+          null,
+          false,
+          false,
+          null,
+          tempGraph,
+        );
+      };
+
+      exportPageAtIndex(0, []);
     };
 
   editorUiPrototype.aiDrawioEnsureBrowserFile =
@@ -906,6 +1092,41 @@ export default function SessionWorkspace() {
       }));
     }
 
+    async function buildPngPagesForExport(xml: string): Promise<
+      Array<{
+        id: string;
+        name: string;
+        pngDataUri: string;
+      }>
+    > {
+      const response = await callRemoteInvoke('aiDrawioBuildPngPreviewPages', [xml]);
+      const result = Array.isArray(response) ? response[0] : response;
+      const pages = (result as { pages?: unknown } | null)?.pages;
+
+      if (!Array.isArray(pages) || pages.length === 0) {
+        throw new Error('draw.io preview did not return any pages');
+      }
+
+      return pages.map((page, index) => {
+        const candidate = page as { id?: unknown; name?: unknown; pngDataUri?: unknown };
+        const id = typeof candidate.id === 'string' && candidate.id.trim() ? candidate.id.trim() : `page-${index + 1}`;
+        const name =
+          typeof candidate.name === 'string' && candidate.name.trim() ? candidate.name.trim() : `Page ${index + 1}`;
+        const pngDataUri =
+          typeof candidate.pngDataUri === 'string' ? candidate.pngDataUri.trim() : '';
+
+        if (!pngDataUri.startsWith('data:image/png')) {
+          throw new Error('draw.io preview did not return a PNG image');
+        }
+
+        return {
+          id,
+          name,
+          pngDataUri,
+        };
+      });
+    }
+
     async function exportCurrentSvgPages(): Promise<{
       exportedAt: string;
       pages: Array<{
@@ -916,6 +1137,23 @@ export default function SessionWorkspace() {
     }> {
       const xml = await readCurrentDocumentXml();
       const pages = await buildSvgPagesForExport(xml);
+
+      return {
+        exportedAt: new Date().toISOString(),
+        pages,
+      };
+    }
+
+    async function exportCurrentPreviewPages(): Promise<{
+      exportedAt: string;
+      pages: Array<{
+        id: string;
+        name: string;
+        pngDataUri: string;
+      }>;
+    }> {
+      const xml = await readCurrentDocumentXml();
+      const pages = await buildPngPagesForExport(xml);
 
       return {
         exportedAt: new Date().toISOString(),
@@ -1170,6 +1408,10 @@ export default function SessionWorkspace() {
 
         async exportSvgPages() {
           return exportCurrentSvgPages();
+        },
+
+        async exportPreviewPages() {
+          return exportCurrentPreviewPages();
         },
       },
 

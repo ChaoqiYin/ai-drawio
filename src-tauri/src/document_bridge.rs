@@ -46,6 +46,26 @@ return await window.__AI_DRAWIO_SHELL__.documentBridge.exportSvgPages();
     build_svg_pages_payload(value, &state)
 }
 
+pub fn export_preview_pages(
+    app: &AppHandle,
+    bridge_state: &ScriptResultBridgeState,
+    session_id: &str,
+    timeout: Duration,
+) -> Result<Value, ControlError> {
+    let state = require_active_session(app, bridge_state, session_id, timeout)?;
+    let value = eval_main_window_script_with_result(
+        app,
+        bridge_state,
+        r#"
+return await window.__AI_DRAWIO_SHELL__.documentBridge.exportPreviewPages();
+"#,
+        timeout,
+    )
+    .map_err(|error| ControlError::new("DOCUMENT_NOT_AVAILABLE", error))?;
+
+    build_preview_pages_payload(value, &state)
+}
+
 pub fn apply_document(
     app: &AppHandle,
     bridge_state: &ScriptResultBridgeState,
@@ -270,6 +290,81 @@ fn build_svg_pages_payload(value: Value, state: &ShellState) -> Result<Value, Co
     }))
 }
 
+fn build_preview_pages_payload(value: Value, state: &ShellState) -> Result<Value, ControlError> {
+    let pages = value
+        .get("pages")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            ControlError::new(
+                "DOCUMENT_NOT_AVAILABLE",
+                "document preview pages are missing from the bridge response",
+            )
+        })?;
+
+    if pages.is_empty() {
+        return Err(ControlError::new(
+            "DOCUMENT_NOT_AVAILABLE",
+            "document preview export returned no pages",
+        ));
+    }
+
+    let normalized_pages = pages
+        .iter()
+        .enumerate()
+        .map(|(index, page)| {
+            let id = page
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("page-{}", index + 1));
+            let name = page
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("Page {}", index + 1));
+            let png_data_uri = page
+                .get("pngDataUri")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .filter(|value| value.starts_with("data:image/png"))
+                .map(str::to_string)
+                .ok_or_else(|| {
+                    ControlError::new(
+                        "DOCUMENT_NOT_AVAILABLE",
+                        "document preview export page is missing png data",
+                    )
+                })?;
+
+            Ok(json!({
+                "id": id,
+                "name": name,
+                "pngDataUri": png_data_uri
+            }))
+        })
+        .collect::<Result<Vec<_>, ControlError>>()?;
+
+    let timestamp = value
+        .get("exportedAt")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    Ok(json!({
+        "bridgeState": {
+            "bridgeReady": state.bridge_ready,
+            "frameReady": state.frame_ready,
+            "route": state.route,
+            "sessionId": state.session_id
+        },
+        "pages": normalized_pages,
+        "timestamp": timestamp
+    }))
+}
+
 pub fn hash_xml(xml: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(xml.as_bytes());
@@ -278,7 +373,7 @@ pub fn hash_xml(xml: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_svg_pages_payload, hash_xml};
+    use super::{build_preview_pages_payload, build_svg_pages_payload, hash_xml};
     use crate::session_runtime::ShellState;
     use serde_json::json;
 
@@ -319,5 +414,37 @@ mod tests {
         assert_eq!(payload["pages"][0]["svg"], "<svg><text>one</text></svg>");
         assert_eq!(payload["bridgeState"]["sessionId"], "sess-1");
         assert_eq!(payload["timestamp"], "2026-03-17T00:00:00.000Z");
+    }
+
+    #[test]
+    fn builds_preview_pages_payload_with_bridge_metadata() {
+        let payload = build_preview_pages_payload(
+            json!({
+                "exportedAt": "2026-03-19T00:00:00.000Z",
+                "pages": [
+                    {
+                        "id": "page-1",
+                        "name": "Page 1",
+                        "pngDataUri": "data:image/png;base64,cG5n"
+                    }
+                ]
+            }),
+            &ShellState {
+                bootstrap_error: None,
+                bridge_ready: true,
+                conversation_loaded: true,
+                document_loaded: true,
+                frame_ready: true,
+                last_event: "ready".to_string(),
+                route: "/session?id=sess-1".to_string(),
+                session_id: "sess-1".to_string(),
+            },
+        )
+        .expect("preview payload should build");
+
+        assert_eq!(payload["pages"][0]["id"], "page-1");
+        assert_eq!(payload["pages"][0]["pngDataUri"], "data:image/png;base64,cG5n");
+        assert_eq!(payload["bridgeState"]["sessionId"], "sess-1");
+        assert_eq!(payload["timestamp"], "2026-03-19T00:00:00.000Z");
     }
 }
