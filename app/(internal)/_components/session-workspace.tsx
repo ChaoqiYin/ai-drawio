@@ -2,13 +2,12 @@
 
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   Alert,
   Button,
   Card,
   Empty,
-  Input,
   Layout,
   Modal,
   Space,
@@ -16,7 +15,6 @@ import {
   Tag,
   Typography,
 } from '@arco-design/web-react';
-import { IconEdit } from '@arco-design/web-react/icon';
 
 import {
   buildBrowserFileTitle,
@@ -34,11 +32,14 @@ import {
   getConversationById,
   subscribeConversationChanges,
   touchConversationUpdatedAt,
-  updateConversationTitle,
 } from '../_lib/conversation-store';
 import { saveHomeRedirectError } from '../_lib/conversation-route-state';
-import { InternalBreadcrumb, type InternalBreadcrumbRoute } from './internal-breadcrumb';
-import { InternalTopNavigation } from './internal-top-navigation';
+import {
+  registerSessionRuntime,
+  runSessionDocumentAction,
+  unregisterSessionRuntime,
+} from '../_lib/session-runtime-registry';
+import { useWorkspaceSessionStore } from '../_lib/workspace-session-store';
 
 const DRAWIO_EMBED_PATH = '/drawio/index.html?embed=1&proto=json&spin=1&noSaveBtn=1&noExitBtn=1&saveAndExit=0';
 
@@ -58,7 +59,7 @@ const toolbarCardStyle = {
   borderRadius: 8,
   backdropFilter: 'blur(18px)',
 } as const;
-const { Header, Content, Sider } = Layout;
+const { Content, Sider } = Layout;
 const { Paragraph, Text } = Typography;
 
 type PendingRequest = {
@@ -692,9 +693,14 @@ function installDocumentRemoteInvokes(frameWindow: DrawioFrameWindow | null | un
     };
 }
 
-export default function SessionWorkspace() {
+export default function SessionWorkspace({
+  sessionId: providedSessionId,
+}: {
+  hidden?: boolean;
+  sessionId?: string;
+} = {}) {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const updateSessionMeta = useWorkspaceSessionStore((state) => state.updateSessionMeta);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const bridgeRef = useRef<BridgeState>({
     bootstrapFrame: null,
@@ -717,10 +723,6 @@ export default function SessionWorkspace() {
   const [conversation, setConversation] = useState<ConversationRecord | null>(null);
   const [error, setError] = useState('');
   const [isFrameReady, setIsFrameReady] = useState(false);
-  const [renameDraftTitle, setRenameDraftTitle] = useState('');
-  const [renameError, setRenameError] = useState('');
-  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
-  const [isRenaming, setIsRenaming] = useState(false);
   const [restorePreviewActivePageId, setRestorePreviewActivePageId] = useState('');
   const [restorePreviewDialogOpen, setRestorePreviewDialogOpen] = useState(false);
   const [restorePreviewEntry, setRestorePreviewEntry] = useState<CanvasHistoryEntry | null>(null);
@@ -729,11 +731,7 @@ export default function SessionWorkspace() {
   const [restoringHistoryId, setRestoringHistoryId] = useState('');
   const [isRouteRedirecting, setIsRouteRedirecting] = useState(false);
 
-  const sessionId = searchParams.get('id');
-  const breadcrumbRoutes = [
-    { path: '/', breadcrumbName: '首页' },
-    { path: sessionId || '', breadcrumbName: '工作区详情' },
-  ] satisfies InternalBreadcrumbRoute[];
+  const sessionId = providedSessionId || '';
 
   conversationRef.current = conversation;
   frameReadyRef.current = isFrameReady;
@@ -836,29 +834,24 @@ export default function SessionWorkspace() {
     resetEmbeddedDocumentState();
   }, [sessionId]);
 
-  function openRenameDialog(): void {
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+
+    updateSessionMeta(sessionId, { isReady: isFrameReady });
+  }, [isFrameReady, sessionId, updateSessionMeta]);
+
+  useEffect(() => {
     if (!conversation) {
       return;
     }
 
-    setRenameDraftTitle(conversation.title);
-    setRenameError('');
-    setRenameDialogOpen(true);
-  }
-
-  const handleNavigateBack = (): void => {
-    router.push('/');
-  };
-
-  function closeRenameDialog(options?: { force?: boolean }): void {
-    if (isRenaming && !options?.force) {
-      return;
-    }
-
-    setRenameDialogOpen(false);
-    setRenameDraftTitle('');
-    setRenameError('');
-  }
+    updateSessionMeta(conversation.id, {
+      title: conversation.title,
+      updatedAt: conversation.updatedAt,
+    });
+  }, [conversation, updateSessionMeta]);
 
   function closeRestorePreview(options?: { force?: boolean }): void {
     if (restoringHistoryId && !options?.force) {
@@ -870,35 +863,6 @@ export default function SessionWorkspace() {
     setRestorePreviewError('');
     setRestorePreviewPages([]);
     setRestorePreviewActivePageId('');
-  }
-
-  async function handleRenameConversation(): Promise<void> {
-    if (!conversation) {
-      return;
-    }
-
-    const nextTitle = renameDraftTitle.trim();
-
-    if (!nextTitle) {
-      setRenameError('会话名称不能为空。');
-      return;
-    }
-
-    setRenameError('');
-    setError('');
-    setIsRenaming(true);
-
-    try {
-      const updatedConversation = await updateConversationTitle(conversation.id, nextTitle);
-      setConversation(updatedConversation);
-      closeRenameDialog({ force: true });
-    } catch (nextError) {
-      const message = nextError instanceof Error ? nextError.message : '重命名会话失败。';
-      setError(message);
-      setRenameError(message);
-    } finally {
-      setIsRenaming(false);
-    }
   }
 
   async function openRestorePreview(entry: CanvasHistoryEntry): Promise<void> {
@@ -1435,6 +1399,41 @@ export default function SessionWorkspace() {
       },
     };
 
+    registerSessionRuntime(sessionIdRef.current, {
+      documentBridge: {
+        applyDocument: async ({ historyLabel, historySource, prompt, relatedMessageId, xml }) =>
+          runSessionDocumentAction(sessionIdRef.current, async () =>
+            applyDocumentWithHistory({
+              historyLabel,
+              historySource,
+              prompt,
+              relatedMessageId,
+              xml,
+            }),
+          ),
+        applyDocumentWithoutHistory: async (xml) =>
+          runSessionDocumentAction(sessionIdRef.current, async () => applyDocumentWithoutHistory(xml)),
+        exportPreviewPages: async () =>
+          runSessionDocumentAction(sessionIdRef.current, async () => exportCurrentPreviewPages()),
+        exportSvgPages: async () =>
+          runSessionDocumentAction(sessionIdRef.current, async () => exportCurrentSvgPages()),
+        getDocument: async () =>
+          runSessionDocumentAction(sessionIdRef.current, async () => {
+            const xml = await readCurrentDocumentXml();
+
+            return {
+              readAt: new Date().toISOString(),
+              xml,
+            };
+          }),
+      },
+      getState: () => ({
+        isReady: bridge.remoteReady && frameReadyRef.current,
+        sessionId: sessionIdRef.current,
+        status: bridge.remoteReady && frameReadyRef.current ? 'idle' : 'loading',
+      }),
+    });
+
     window.addEventListener('message', handleFrameMessage);
 
     return () => {
@@ -1443,6 +1442,7 @@ export default function SessionWorkspace() {
       bridge.bootstrapStarted = false;
       bridge.bootstrappingBrowserFile = false;
       rejectPendingRequests('draw.io shell bridge was disposed');
+      unregisterSessionRuntime(sessionIdRef.current);
 
       if (shellWindow.__AI_DRAWIO_SHELL__) {
         if (previousDocumentBridge) {
@@ -1479,32 +1479,6 @@ export default function SessionWorkspace() {
   return (
     <Layout className={shellClassName}>
       <div className={pageShellClassName}>
-        <Header className="mb-[14px]! h-auto bg-transparent p-0" data-layout="workspace-head">
-          <InternalTopNavigation
-            onBack={handleNavigateBack}
-            content={
-              <div
-                className="flex min-w-0 flex-1 items-center justify-between gap-4"
-                data-layout="workspace-top-nav-body"
-              >
-                <InternalBreadcrumb dataLayout="workspace-breadcrumb" routes={breadcrumbRoutes} />
-
-                <div className="flex items-center justify-end gap-3" data-layout="workspace-status-bar">
-                  <Space size={8}>
-                    <Button icon={<IconEdit />} onClick={openRenameDialog} disabled={!conversation || isRenaming}>
-                      重命名
-                    </Button>
-                    {conversation ? <Tag color="green">更新时间 {formatDate(conversation.updatedAt)}</Tag> : null}
-                    <Tag color={isFrameReady ? 'green' : 'gold'}>
-                      {isFrameReady ? 'draw.io 已就绪' : '正在加载 draw.io'}
-                    </Tag>
-                  </Space>
-                </div>
-              </div>
-            }
-          />
-        </Header>
-
         <Layout hasSider className={shellBodyClassName} data-layout="workspace-body">
           <Sider width={320} theme="light" trigger={null} className={sidebarClassName} data-layout="workspace-sidebar">
             <Card
@@ -1664,31 +1638,6 @@ export default function SessionWorkspace() {
               <Empty description="暂无缓存预览" />
             )}
           </div>
-        </Space>
-      </Modal>
-      <Modal
-        title="重命名会话"
-        visible={renameDialogOpen}
-        onOk={() => void handleRenameConversation()}
-        onCancel={() => closeRenameDialog()}
-        okText={isRenaming ? '保存中...' : '保存'}
-        cancelText="取消"
-        okButtonProps={{ loading: isRenaming, disabled: !renameDraftTitle.trim() }}
-      >
-        <Space direction="vertical" size={10} style={{ width: '100%', alignItems: 'stretch' }}>
-          <Input
-            value={renameDraftTitle}
-            placeholder="请输入新的会话名称"
-            maxLength={80}
-            onChange={(value) => {
-              setRenameDraftTitle(value);
-              if (renameError) {
-                setRenameError('');
-              }
-            }}
-            onPressEnter={() => void handleRenameConversation()}
-          />
-          {renameError ? <div style={{ color: 'rgb(var(--danger-6))', fontSize: 12 }}>{renameError}</div> : null}
         </Space>
       </Modal>
     </Layout>

@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 
 import { buildSessionHref } from "../_lib/conversation-model";
 import {
+  getSessionShellControls,
+  getSessionStatus,
+  getSessionRuntime,
+  listOpenSessions,
+  registerSessionRuntime,
+  unregisterSessionRuntime,
+} from "../_lib/session-runtime-registry";
+import {
   createConversation,
   findConversationByTitle,
   getConversationById,
@@ -62,6 +70,11 @@ type ShellConversationStore = {
 type ShellBridge = {
   conversationStore?: ShellConversationStore;
   getState?: () => ShellState;
+  getSessionStatus?: (id: string) => ReturnType<typeof getSessionStatus>;
+  listOpenSessions?: () => string[];
+  openSessionTab?: (id: string, title?: string) => Promise<void>;
+  ensureSessionTab?: (id?: string) => Promise<{ id: string } | null>;
+  sessions?: Record<string, ReturnType<typeof getSessionRuntime>>;
 };
 
 type ShellWindow = Window &
@@ -71,7 +84,6 @@ type ShellWindow = Window &
 
 function buildIdleShellState(): ShellState {
   const route = `${window.location.pathname}${window.location.search}`;
-  const sessionId = new URLSearchParams(window.location.search).get("id") || "";
 
   return {
     bootstrapError: null,
@@ -83,7 +95,7 @@ function buildIdleShellState(): ShellState {
     frameReady: false,
     lastEvent: "idle",
     route,
-    sessionId
+    sessionId: ""
   };
 }
 
@@ -96,6 +108,9 @@ export default function InternalShellBridge() {
 
     shellWindow.__AI_DRAWIO_SHELL__ = {
       ...previousShell,
+      ensureSessionTab: async (id?: string) => {
+        return (await getSessionShellControls().ensureSessionTab?.(id)) ?? null;
+      },
       conversationStore: {
         async createConversation() {
           const conversation = await createConversation("本地 AI 会话");
@@ -139,6 +154,7 @@ export default function InternalShellBridge() {
         },
         async openSession(id) {
           const href = buildSessionHref(id);
+          await getSessionShellControls().openSessionTab?.(id, id);
           router.push(href);
 
           return {
@@ -147,6 +163,44 @@ export default function InternalShellBridge() {
           };
         }
       },
+      getSessionStatus,
+      listOpenSessions,
+      openSessionTab: async (id, title) => {
+        await getSessionShellControls().openSessionTab?.(id, title);
+      },
+      sessions: new Proxy(
+        {},
+        {
+          get(_target, property) {
+            if (typeof property !== "string") {
+              return undefined;
+            }
+
+            return getSessionRuntime(property);
+          },
+          ownKeys() {
+            return listOpenSessions();
+          },
+          getOwnPropertyDescriptor(_target, property) {
+            if (typeof property !== "string") {
+              return undefined;
+            }
+
+            const runtime = getSessionRuntime(property);
+
+            if (!runtime) {
+              return undefined;
+            }
+
+            return {
+              configurable: true,
+              enumerable: true,
+              value: runtime,
+              writable: false,
+            };
+          },
+        }
+      ) as Record<string, ReturnType<typeof getSessionRuntime>>,
       getState: previousShell?.getState || buildIdleShellState
     };
 

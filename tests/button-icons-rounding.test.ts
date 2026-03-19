@@ -7,6 +7,10 @@ const HOME_SOURCE_PATH = new URL(
   "../app/(internal)/_components/conversation-home.tsx",
   import.meta.url
 );
+const SESSION_TABS_SOURCE_PATH = new URL(
+  "../app/(internal)/_components/session-tabs-shell.tsx",
+  import.meta.url
+);
 const WORKSPACE_SOURCE_PATH = new URL(
   "../app/(internal)/_components/session-workspace.tsx",
   import.meta.url
@@ -17,9 +21,10 @@ const TOP_NAV_SOURCE_PATH = new URL(
 );
 
 test("internal pages use rounded buttons and icons for key actions", async () => {
-  const [providerSource, homeSource, workspaceSource, topNavSource] = await Promise.all([
+  const [providerSource, homeSource, sessionTabsSource, workspaceSource, topNavSource] = await Promise.all([
     readFile(ARCO_PROVIDER_PATH, "utf8"),
     readFile(HOME_SOURCE_PATH, "utf8"),
+    readFile(SESSION_TABS_SOURCE_PATH, "utf8"),
     readFile(WORKSPACE_SOURCE_PATH, "utf8"),
     readFile(TOP_NAV_SOURCE_PATH, "utf8")
   ]);
@@ -32,8 +37,11 @@ test("internal pages use rounded buttons and icons for key actions", async () =>
   assert.match(homeSource, /icon=\{<IconDelete/);
   assert.match(homeSource, /icon=\{<IconPoweroff/);
 
-  assert.match(workspaceSource, /@arco-design\/web-react\/icon/);
-  assert.match(workspaceSource, /icon=\{<IconEdit/);
+  assert.match(sessionTabsSource, /@arco-design\/web-react\/icon/);
+  assert.match(sessionTabsSource, /icon=\{<IconEdit/);
+  assert.match(sessionTabsSource, /icon=\{<IconClose/);
+  assert.match(sessionTabsSource, /shape="circle"/);
+  assert.doesNotMatch(workspaceSource, /@arco-design\/web-react\/icon/);
   assert.match(topNavSource, /@arco-design\/web-react\/icon/);
   assert.match(topNavSource, /icon=\{<IconLeft/);
 });

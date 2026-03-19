@@ -198,8 +198,8 @@ export function buildConversationTimeline(conversation: {
   ].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
-export function buildSessionHref(id: string): string {
-  return `/session?id=${encodeURIComponent(id)}`;
+export function buildSessionHref(_id?: string): string {
+  return "/session";
 }
 
 export function buildBrowserFileTitle(sessionId: string): string {

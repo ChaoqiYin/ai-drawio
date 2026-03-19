@@ -13,12 +13,8 @@ test("session workspace uses a strict desktop flex shell structure", async () =>
   assert.match(source, /Typography/);
   assert.match(source, /Tag/);
   assert.match(source, /Modal/);
-  assert.match(source, /Input/);
-  assert.match(source, /handleRenameConversation/);
-  assert.match(source, /renameDraftTitle/);
-  assert.match(source, /updateConversationTitle/);
-  assert.match(source, /重命名/);
-  assert.match(source, /data-layout="workspace-head"/);
+  assert.match(source, /useWorkspaceSessionStore/);
+  assert.match(source, /updateSessionMeta/);
   assert.match(source, /data-layout="workspace-body"/);
   assert.match(source, /data-layout="workspace-sidebar"/);
   assert.match(source, /data-layout="workspace-main"/);
@@ -28,7 +24,6 @@ test("session workspace uses a strict desktop flex shell structure", async () =>
   assert.match(source, /sidebarSurfaceClassName/);
   assert.match(source, /const toolbarCardStyle = \{[\s\S]*borderRadius: 8,/);
   assert.match(source, /flex flex-col h-full min-h-full p-\[18px\] lg:p-\[22px\]/);
-  assert.match(source, /<Header className="mb-\[14px\]! h-auto bg-transparent p-0" data-layout="workspace-head">/);
   assert.match(source, /flex min-h-0 flex-1 flex-col gap-\[14px\] lg:gap-4/);
   assert.match(source, /min-h-0 flex min-w-0 flex-1 flex-col gap-4 lg:gap-\[18px\] bg-transparent!/);
   assert.match(source, /rounded-\[8px\][^"]*border border-\[rgba\(148,163,184,0\.2\)\]/);
@@ -57,6 +52,7 @@ test("session workspace uses a strict desktop flex shell structure", async () =>
   assert.doesNotMatch(source, /linear-gradient/);
   assert.doesNotMatch(source, /radial-gradient/);
   assert.doesNotMatch(source, /data-layout="workspace-main-toolbar"/);
+  assert.doesNotMatch(source, /workspace-head/);
   assert.doesNotMatch(source, /嵌入式画布工作区/);
   assert.doesNotMatch(source, /draw\.io 画布/);
   assert.doesNotMatch(source, /当前会话已加载/);
