@@ -8,6 +8,5 @@ Use only when the user explicitly needs the persisted session list.
 ai-drawio session list
 ```
 
-- Use with no extra flags.
-- Do not call this just to support ordinary canvas work.
+- Use this when the user needs to discover the exact session id for later commands.
 - If the app is not running, this command returns `APP_NOT_RUNNING`.

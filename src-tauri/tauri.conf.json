@@ -64,6 +64,16 @@
     "cli": {
       "description": "AI Drawio packaged desktop command line interface",
       "subcommands": {
+        "open": {
+          "description": "Launch the desktop app",
+          "args": [
+            {
+              "name": "mode",
+              "takesValue": true,
+              "required": false
+            }
+          ]
+        },
         "status": {
           "description": "Inspect the running desktop shell state"
         },
@@ -78,6 +88,9 @@
         "session": {
           "description": "Inspect or open local sessions",
           "subcommands": {
+            "create": {
+              "description": "Create a new local session and wait until it is ready"
+            },
             "list": {
               "description": "List all local sessions"
             },
@@ -87,12 +100,7 @@
                 {
                   "name": "session-id",
                   "index": 1,
-                  "required": false
-                },
-                {
-                  "name": "title",
-                  "takesValue": true,
-                  "required": false
+                  "required": true
                 }
               ]
             }
@@ -105,14 +113,9 @@
               "description": "Read the current draw.io document",
               "args": [
                 {
-                  "name": "session",
-                  "takesValue": true,
-                  "required": false
-                },
-                {
-                  "name": "session-title",
-                  "takesValue": true,
-                  "required": false
+                  "name": "session-id",
+                  "index": 1,
+                  "required": true
                 },
                 {
                   "name": "output-file",
@@ -121,12 +124,57 @@
                 }
               ]
             },
-            "document.apply": {
-              "description": "Apply a draw.io document to the resolved session",
+            "document.svg": {
+              "description": "Export the current draw.io document as per-page SVG",
               "args": [
                 {
-                  "name": "xml",
+                  "name": "session-id",
                   "index": 1,
+                  "required": true
+                },
+                {
+                  "name": "output-file",
+                  "takesValue": true,
+                  "required": false
+                }
+              ]
+            },
+            "document.preview": {
+              "description": "Export the current draw.io document as per-page PNG preview images",
+              "args": [
+                {
+                  "name": "session-id",
+                  "index": 1,
+                  "required": true
+                },
+                {
+                  "name": "output-directory",
+                  "index": 2,
+                  "required": true
+                },
+                {
+                  "name": "page",
+                  "takesValue": true,
+                  "required": false
+                }
+              ]
+            },
+            "document.apply": {
+              "description": "Apply a draw.io document to the specified session",
+              "args": [
+                {
+                  "name": "session-id",
+                  "index": 1,
+                  "required": true
+                },
+                {
+                  "name": "prompt",
+                  "index": 2,
+                  "required": true
+                },
+                {
+                  "name": "xml",
+                  "index": 3,
                   "required": false
                 },
                 {
@@ -140,22 +188,7 @@
                   "required": false
                 },
                 {
-                  "name": "session",
-                  "takesValue": true,
-                  "required": false
-                },
-                {
-                  "name": "session-title",
-                  "takesValue": true,
-                  "required": false
-                },
-                {
                   "name": "base-version",
-                  "takesValue": true,
-                  "required": false
-                },
-                {
-                  "name": "prompt",
                   "takesValue": true,
                   "required": false
                 },
@@ -170,8 +203,13 @@
               "description": "Restore a draw.io document without adding canvas history",
               "args": [
                 {
-                  "name": "xml",
+                  "name": "session-id",
                   "index": 1,
+                  "required": true
+                },
+                {
+                  "name": "xml",
+                  "index": 2,
                   "required": false
                 },
                 {
@@ -182,16 +220,6 @@
                 {
                   "name": "xml-stdin",
                   "takesValue": false,
-                  "required": false
-                },
-                {
-                  "name": "session",
-                  "takesValue": true,
-                  "required": false
-                },
-                {
-                  "name": "session-title",
-                  "takesValue": true,
                   "required": false
                 },
                 {

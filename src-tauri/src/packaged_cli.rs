@@ -9,41 +9,62 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const CLI_SOURCE_NAME: &str = "ai-drawio";
 const CONTROL_TIMEOUT_MS: u64 = 20_000;
 const STATUS_TIMEOUT_MS: u64 = 5_000;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SessionLocator {
-    Id(String),
-    Title(String),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenMode {
+    Tray,
+    Window,
+}
+
+impl OpenMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Tray => "tray",
+            Self::Window => "window",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, String> {
+        match value.trim() {
+            "tray" => Ok(Self::Tray),
+            "window" => Ok(Self::Window),
+            other => Err(format!("unsupported open mode '{other}'")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackagedCliCommand {
+    Open {
+        mode: OpenMode,
+    },
     Status,
-    ConversationCreate,
+    SessionCreate,
     SessionList,
     SessionOpen {
-        locator: SessionLocator,
+        session_id: String,
     },
     CanvasDocumentGet {
-        locator: Option<SessionLocator>,
+        session_id: String,
         output_file: Option<String>,
     },
     CanvasDocumentSvg {
-        locator: Option<SessionLocator>,
+        session_id: String,
         output_file: Option<String>,
     },
     CanvasDocumentPreview {
-        locator: Option<SessionLocator>,
+        session_id: String,
         output_directory: String,
         page: Option<usize>,
     },
     CanvasDocumentApply {
-        locator: Option<SessionLocator>,
+        session_id: String,
         xml: Option<String>,
         xml_file: Option<String>,
         xml_stdin: bool,
@@ -52,7 +73,7 @@ pub enum PackagedCliCommand {
         output_file: Option<String>,
     },
     CanvasDocumentRestore {
-        locator: Option<SessionLocator>,
+        session_id: String,
         xml: Option<String>,
         xml_file: Option<String>,
         xml_stdin: bool,
@@ -113,36 +134,40 @@ pub fn parse_cli_args_from_strings(args: &[String]) -> Result<PackagedCliCommand
 
 fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
     match matches.subcommand() {
+        Some(("open", open_matches)) => Ok(PackagedCliCommand::Open {
+            mode: parse_open_mode(open_matches)?,
+        }),
         Some(("status", _)) => Ok(PackagedCliCommand::Status),
         Some(("conversation", submatches)) => match submatches.subcommand() {
-            Some(("create", _)) => Ok(PackagedCliCommand::ConversationCreate),
+            Some(("create", _)) => Ok(PackagedCliCommand::SessionCreate),
             _ => Err("conversation only supports create".to_string()),
         },
         Some(("session", submatches)) => match submatches.subcommand() {
+            Some(("create", _)) => Ok(PackagedCliCommand::SessionCreate),
             Some(("list", _)) => Ok(PackagedCliCommand::SessionList),
             Some(("open", open_matches)) => Ok(PackagedCliCommand::SessionOpen {
-                locator: parse_required_locator(open_matches, "session-id", "title")?,
+                session_id: required_string_arg(open_matches, "session-id")?,
             }),
-            _ => Err("session only supports list or open".to_string()),
+            _ => Err("session only supports create, list or open".to_string()),
         },
         Some(("canvas", submatches)) => match submatches.subcommand() {
             Some(("document.get", get_matches)) => Ok(PackagedCliCommand::CanvasDocumentGet {
-                locator: parse_optional_locator(get_matches, "session", "session-title"),
+                session_id: required_string_arg(get_matches, "session-id")?,
                 output_file: string_arg(get_matches, "output-file"),
             }),
             Some(("document.svg", svg_matches)) => Ok(PackagedCliCommand::CanvasDocumentSvg {
-                locator: parse_optional_locator(svg_matches, "session", "session-title"),
+                session_id: required_string_arg(svg_matches, "session-id")?,
                 output_file: string_arg(svg_matches, "output-file"),
             }),
             Some(("document.preview", preview_matches)) => {
                 Ok(PackagedCliCommand::CanvasDocumentPreview {
-                    locator: parse_optional_locator(preview_matches, "session", "session-title"),
+                    session_id: required_string_arg(preview_matches, "session-id")?,
                     output_directory: required_string_arg(preview_matches, "output-directory")?,
                     page: optional_positive_usize_arg(preview_matches, "page")?,
                 })
             }
             Some(("document.apply", apply_matches)) => Ok(PackagedCliCommand::CanvasDocumentApply {
-                locator: parse_optional_locator(apply_matches, "session", "session-title"),
+                session_id: required_string_arg(apply_matches, "session-id")?,
                 xml: string_arg(apply_matches, "xml"),
                 xml_file: string_arg(apply_matches, "xml-file"),
                 xml_stdin: apply_matches.get_flag("xml-stdin"),
@@ -152,7 +177,7 @@ fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
             }),
             Some(("document.restore", restore_matches)) => {
                 Ok(PackagedCliCommand::CanvasDocumentRestore {
-                    locator: parse_optional_locator(restore_matches, "session", "session-title"),
+                    session_id: required_string_arg(restore_matches, "session-id")?,
                     xml: string_arg(restore_matches, "xml"),
                     xml_file: string_arg(restore_matches, "xml-file"),
                     xml_stdin: restore_matches.get_flag("xml-stdin"),
@@ -169,35 +194,21 @@ fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
 }
 
 pub fn build_resolution_request(command: &PackagedCliCommand) -> Option<ControlRequest> {
-    let locator = match command {
-        PackagedCliCommand::CanvasDocumentGet { locator, .. } => locator.as_ref(),
-        PackagedCliCommand::CanvasDocumentSvg { locator, .. } => locator.as_ref(),
-        PackagedCliCommand::CanvasDocumentPreview { locator, .. } => locator.as_ref(),
-        PackagedCliCommand::CanvasDocumentApply { locator, .. } => locator.as_ref(),
-        PackagedCliCommand::CanvasDocumentRestore { locator, .. } => locator.as_ref(),
-        _ => return None,
-    };
+    let session_id = match command {
+        PackagedCliCommand::CanvasDocumentGet { session_id, .. } => Some(session_id.as_str()),
+        PackagedCliCommand::CanvasDocumentSvg { session_id, .. } => Some(session_id.as_str()),
+        PackagedCliCommand::CanvasDocumentPreview { session_id, .. } => Some(session_id.as_str()),
+        PackagedCliCommand::CanvasDocumentApply { session_id, .. } => Some(session_id.as_str()),
+        PackagedCliCommand::CanvasDocumentRestore { session_id, .. } => Some(session_id.as_str()),
+        _ => None,
+    }?;
 
-    match locator {
-        Some(SessionLocator::Id(session_id)) => Some(build_request(
-            "session.open",
-            Some(session_id.to_string()),
-            json!({}),
-            CONTROL_TIMEOUT_MS,
-        )),
-        Some(SessionLocator::Title(title)) => Some(build_request(
-            "session.open",
-            None,
-            json!({ "title": title }),
-            CONTROL_TIMEOUT_MS,
-        )),
-        None => Some(build_request(
-            "session.ensure",
-            None,
-            json!({}),
-            CONTROL_TIMEOUT_MS,
-        )),
-    }
+    Some(build_request(
+        "session.open",
+        Some(session_id.to_string()),
+        json!({}),
+        CONTROL_TIMEOUT_MS,
+    ))
 }
 
 pub fn build_request_for_command(
@@ -205,35 +216,27 @@ pub fn build_request_for_command(
     session_id: Option<String>,
 ) -> Result<ControlRequest, String> {
     match command {
+        PackagedCliCommand::Open { .. } => {
+            Err("open does not map to a control request".to_string())
+        }
         PackagedCliCommand::Status => {
             Ok(build_request("status", None, json!({}), STATUS_TIMEOUT_MS))
         }
-        PackagedCliCommand::ConversationCreate => Ok(build_request(
-            "conversation.create",
-            None,
-            json!({}),
-            CONTROL_TIMEOUT_MS,
-        )),
+        PackagedCliCommand::SessionCreate => {
+            Err("session.create is orchestrated by the CLI".to_string())
+        }
         PackagedCliCommand::SessionList => Ok(build_request(
             "session.list",
             None,
             json!({}),
             CONTROL_TIMEOUT_MS,
         )),
-        PackagedCliCommand::SessionOpen { locator } => match locator {
-            SessionLocator::Id(session_id) => Ok(build_request(
-                "session.open",
-                Some(session_id.clone()),
-                json!({}),
-                CONTROL_TIMEOUT_MS,
-            )),
-            SessionLocator::Title(title) => Ok(build_request(
-                "session.open",
-                None,
-                json!({ "title": title }),
-                CONTROL_TIMEOUT_MS,
-            )),
-        },
+        PackagedCliCommand::SessionOpen { session_id } => Ok(build_request(
+            "session.open",
+            Some(session_id.to_string()),
+            json!({}),
+            CONTROL_TIMEOUT_MS,
+        )),
         PackagedCliCommand::CanvasDocumentGet { .. } => Ok(build_request(
             "canvas.document.get",
             session_id,
@@ -340,6 +343,14 @@ pub fn build_request_for_command(
 }
 
 pub fn execute_cli(command: &PackagedCliCommand) -> Result<ControlResponse, String> {
+    if let PackagedCliCommand::Open { mode } = command {
+        return execute_open_command(*mode);
+    }
+
+    if let PackagedCliCommand::SessionCreate = command {
+        return execute_session_create();
+    }
+
     if !requires_running_app(command) {
         return Ok(match send_status_request() {
             Ok(response) => response,
@@ -371,7 +382,78 @@ pub fn execute_cli(command: &PackagedCliCommand) -> Result<ControlResponse, Stri
 }
 
 fn requires_running_app(command: &PackagedCliCommand) -> bool {
-    !matches!(command, PackagedCliCommand::Status)
+    !matches!(
+        command,
+        PackagedCliCommand::Status | PackagedCliCommand::Open { .. }
+    )
+}
+
+fn execute_session_create() -> Result<ControlResponse, String> {
+    let create_request = build_request("conversation.create", None, json!({}), CONTROL_TIMEOUT_MS);
+    let create_response = send_control_request(&create_request)?;
+
+    if !create_response.ok {
+        return Ok(relabel_response_command(create_response, "session.create"));
+    }
+
+    let session_id = extract_created_session_id(&create_response)?;
+    let open_request = build_request(
+        "session.open",
+        Some(session_id),
+        json!({}),
+        CONTROL_TIMEOUT_MS,
+    );
+    let open_response = send_control_request(&open_request)?;
+
+    Ok(relabel_response_command(open_response, "session.create"))
+}
+
+fn execute_open_command(mode: OpenMode) -> Result<ControlResponse, String> {
+    if let Ok(response) = send_status_request() {
+        let running = response
+            .data
+            .as_ref()
+            .and_then(|value| value.get("running"))
+            .and_then(Value::as_bool)
+            .unwrap_or(response.ok);
+
+        if running {
+            return Ok(build_success_response(
+                "open",
+                json!({
+                    "launched": false,
+                    "mode": mode.as_str(),
+                    "running": true
+                }),
+            ));
+        }
+    }
+
+    launch_desktop_app(mode)?;
+
+    Ok(build_success_response(
+        "open",
+        json!({
+            "launched": true,
+            "mode": mode.as_str(),
+            "running": false
+        }),
+    ))
+}
+
+fn launch_desktop_app(mode: OpenMode) -> Result<(), String> {
+    let current_exe = std::env::current_exe()
+        .map_err(|error| format!("failed to resolve current executable: {error}"))?;
+
+    Command::new(current_exe)
+        .env(crate::tray_settings::STARTUP_MODE_ENV_VAR, mode.as_str())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("failed to launch AI Drawio: {error}"))?;
+
+    Ok(())
 }
 
 fn send_status_request() -> Result<ControlResponse, String> {
@@ -465,6 +547,26 @@ fn extract_resolved_session_id(response: &ControlResponse) -> Result<String, Str
     }
 
     Err("control response is missing a resolved session id".to_string())
+}
+
+fn extract_created_session_id(response: &ControlResponse) -> Result<String, String> {
+    if let Some(session_id) = response
+        .data
+        .as_ref()
+        .and_then(|value| value.get("id"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(session_id.to_string());
+    }
+
+    extract_resolved_session_id(response)
+}
+
+fn relabel_response_command(mut response: ControlResponse, command: &str) -> ControlResponse {
+    response.command = command.to_string();
+    response
 }
 
 fn maybe_write_output_file(
@@ -745,8 +847,9 @@ fn build_success_response(command: &str, data: Value) -> ControlResponse {
 
 fn command_name(command: &PackagedCliCommand) -> &'static str {
     match command {
+        PackagedCliCommand::Open { .. } => "open",
         PackagedCliCommand::Status => "status",
-        PackagedCliCommand::ConversationCreate => "conversation.create",
+        PackagedCliCommand::SessionCreate => "session.create",
         PackagedCliCommand::SessionList => "session.list",
         PackagedCliCommand::SessionOpen { .. } => "session.open",
         PackagedCliCommand::CanvasDocumentGet { .. } => "canvas.document.get",
@@ -788,6 +891,14 @@ fn string_arg(matches: &ArgMatches, name: &str) -> Option<String> {
     matches.get_one::<String>(name).cloned()
 }
 
+fn parse_open_mode(matches: &ArgMatches) -> Result<OpenMode, String> {
+    OpenMode::parse(
+        string_arg(matches, "mode")
+            .unwrap_or_else(|| OpenMode::Tray.as_str().to_string())
+            .as_str(),
+    )
+}
+
 fn required_string_arg(matches: &ArgMatches, name: &str) -> Result<String, String> {
     string_arg(matches, name).ok_or_else(|| format!("missing required argument '{name}'"))
 }
@@ -808,31 +919,12 @@ fn optional_positive_usize_arg(matches: &ArgMatches, name: &str) -> Result<Optio
     Ok(Some(parsed))
 }
 
-fn parse_required_locator(
-    matches: &ArgMatches,
-    id_name: &str,
-    title_name: &str,
-) -> Result<SessionLocator, String> {
-    parse_optional_locator(matches, id_name, title_name)
-        .ok_or_else(|| format!("missing {id_name} or --{title_name}"))
-}
-
-fn parse_optional_locator(
-    matches: &ArgMatches,
-    id_name: &str,
-    title_name: &str,
-) -> Option<SessionLocator> {
-    string_arg(matches, id_name)
-        .map(SessionLocator::Id)
-        .or_else(|| string_arg(matches, title_name).map(SessionLocator::Title))
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         build_app_not_running_response, build_request_for_command, build_resolution_request,
         build_status_not_running_response, maybe_write_output_file, parse_cli_args,
-        requires_running_app, PackagedCliCommand, SessionLocator,
+        requires_running_app, OpenMode, PackagedCliCommand,
     };
     use crate::control_protocol::ControlResponse;
     use serde_json::json;
@@ -847,29 +939,52 @@ mod tests {
         assert_eq!(
             command,
             PackagedCliCommand::SessionOpen {
-                locator: SessionLocator::Id("sess-1".to_string())
+                session_id: "sess-1".to_string()
             }
         );
     }
 
     #[test]
-    fn parses_session_open_with_title_lookup() {
-        let command = parse_cli_args(&["session", "open", "--title", "Alpha"])
-            .expect("session open by title should parse");
+    fn parses_session_create_command() {
+        let command = parse_cli_args(&["session", "create"]).expect("session create should parse");
+
+        assert_eq!(command, PackagedCliCommand::SessionCreate);
+    }
+
+    #[test]
+    fn rejects_session_open_with_title_lookup() {
+        let error = parse_cli_args(&["session", "open", "--title", "Alpha"])
+            .expect_err("session open should reject title lookup");
+
+        assert!(
+            error.contains("--title") || error.contains("unexpected") || error.contains("unknown"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn parses_open_command_with_default_tray_mode() {
+        let command = parse_cli_args(&["open"]).expect("open command should parse");
 
         assert_eq!(
             command,
-            PackagedCliCommand::SessionOpen {
-                locator: SessionLocator::Title("Alpha".to_string())
+            PackagedCliCommand::Open {
+                mode: OpenMode::Tray
             }
         );
     }
 
     #[test]
-    fn rejects_open_command() {
-        let error = parse_cli_args(&["open"]).expect_err("open command should be removed");
+    fn parses_open_command_with_explicit_window_mode() {
+        let command =
+            parse_cli_args(&["open", "--mode", "window"]).expect("open command should parse");
 
-        assert!(error.contains("unrecognized") || error.contains("unexpected"));
+        assert_eq!(
+            command,
+            PackagedCliCommand::Open {
+                mode: OpenMode::Window
+            }
+        );
     }
 
     #[test]
@@ -877,6 +992,7 @@ mod tests {
         let command = parse_cli_args(&[
             "canvas",
             "document.apply",
+            "sess-1",
             "apply inline xml",
             "<mxfile><diagram id='1'>inline</diagram></mxfile>",
         ])
@@ -885,7 +1001,7 @@ mod tests {
         assert_eq!(
             command,
             PackagedCliCommand::CanvasDocumentApply {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 xml: Some("<mxfile><diagram id='1'>inline</diagram></mxfile>".to_string()),
                 xml_file: None,
                 xml_stdin: false,
@@ -901,6 +1017,7 @@ mod tests {
         let command = parse_cli_args(&[
             "canvas",
             "document.apply",
+            "sess-1",
             "apply xml file",
             "--xml-file",
             "./next.drawio",
@@ -910,7 +1027,7 @@ mod tests {
         assert_eq!(
             command,
             PackagedCliCommand::CanvasDocumentApply {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 xml: None,
                 xml_file: Some("./next.drawio".to_string()),
                 xml_stdin: false,
@@ -923,14 +1040,19 @@ mod tests {
 
     #[test]
     fn parses_document_apply_with_stdin_mode() {
-        let command =
-            parse_cli_args(&["canvas", "document.apply", "apply stdin xml", "--xml-stdin"])
-                .expect("stdin mode should parse");
+        let command = parse_cli_args(&[
+            "canvas",
+            "document.apply",
+            "sess-1",
+            "apply stdin xml",
+            "--xml-stdin",
+        ])
+        .expect("stdin mode should parse");
 
         assert_eq!(
             command,
             PackagedCliCommand::CanvasDocumentApply {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 xml: None,
                 xml_file: None,
                 xml_stdin: true,
@@ -946,6 +1068,7 @@ mod tests {
         let error = parse_cli_args(&[
             "canvas",
             "document.apply",
+            "sess-1",
             "<mxfile><diagram id='1'>inline</diagram></mxfile>",
         ])
         .expect_err("document apply without prompt must fail");
@@ -961,6 +1084,7 @@ mod tests {
         let command = parse_cli_args(&[
             "canvas",
             "document.restore",
+            "sess-1",
             "<mxfile><diagram id='1'>restore</diagram></mxfile>",
         ])
         .expect("document restore should parse");
@@ -968,7 +1092,7 @@ mod tests {
         assert_eq!(
             command,
             PackagedCliCommand::CanvasDocumentRestore {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 xml: Some("<mxfile><diagram id='1'>restore</diagram></mxfile>".to_string()),
                 xml_file: None,
                 xml_stdin: false,
@@ -979,13 +1103,19 @@ mod tests {
 
     #[test]
     fn parses_document_svg_with_output_directory() {
-        let command = parse_cli_args(&["canvas", "document.svg", "--output-file", "./exports"])
-            .expect("document svg should parse");
+        let command = parse_cli_args(&[
+            "canvas",
+            "document.svg",
+            "sess-1",
+            "--output-file",
+            "./exports",
+        ])
+        .expect("document svg should parse");
 
         assert_eq!(
             command,
             PackagedCliCommand::CanvasDocumentSvg {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 output_file: Some("./exports".to_string())
             }
         );
@@ -993,13 +1123,13 @@ mod tests {
 
     #[test]
     fn parses_document_preview_with_output_directory() {
-        let command = parse_cli_args(&["canvas", "document.preview", "./previews"])
+        let command = parse_cli_args(&["canvas", "document.preview", "sess-1", "./previews"])
             .expect("document preview should parse");
 
         assert_eq!(
             command,
             PackagedCliCommand::CanvasDocumentPreview {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 output_directory: "./previews".to_string(),
                 page: None,
             }
@@ -1008,13 +1138,20 @@ mod tests {
 
     #[test]
     fn parses_document_preview_with_selected_page() {
-        let command = parse_cli_args(&["canvas", "document.preview", "./previews", "--page", "2"])
-            .expect("document preview with page should parse");
+        let command = parse_cli_args(&[
+            "canvas",
+            "document.preview",
+            "sess-1",
+            "./previews",
+            "--page",
+            "2",
+        ])
+        .expect("document preview with page should parse");
 
         assert_eq!(
             command,
             PackagedCliCommand::CanvasDocumentPreview {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 output_directory: "./previews".to_string(),
                 page: Some(2),
             }
@@ -1023,7 +1160,7 @@ mod tests {
 
     #[test]
     fn rejects_document_preview_without_output_directory() {
-        let error = parse_cli_args(&["canvas", "document.preview"])
+        let error = parse_cli_args(&["canvas", "document.preview", "sess-1"])
             .expect_err("document preview requires an output directory");
 
         assert!(
@@ -1034,8 +1171,15 @@ mod tests {
 
     #[test]
     fn rejects_document_preview_with_zero_page() {
-        let error = parse_cli_args(&["canvas", "document.preview", "./previews", "--page", "0"])
-            .expect_err("document preview should reject page zero");
+        let error = parse_cli_args(&[
+            "canvas",
+            "document.preview",
+            "sess-1",
+            "./previews",
+            "--page",
+            "0",
+        ])
+        .expect_err("document preview should reject page zero");
 
         assert!(
             error.contains("page") || error.contains("0"),
@@ -1048,6 +1192,7 @@ mod tests {
         let error = parse_cli_args(&[
             "canvas",
             "document.apply",
+            "sess-1",
             "apply inline xml",
             "<mxfile><diagram id='1'>inline</diagram></mxfile>",
             "--xml-stdin",
@@ -1058,35 +1203,46 @@ mod tests {
     }
 
     #[test]
-    fn builds_session_ensure_resolution_for_document_get_without_locator() {
+    fn rejects_document_get_without_session_id() {
+        let error = parse_cli_args(&["canvas", "document.get"])
+            .expect_err("document get should require a session id");
+
+        assert!(
+            error.contains("session-id") || error.contains("required"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn builds_session_open_resolution_for_document_get() {
         let request = build_resolution_request(&PackagedCliCommand::CanvasDocumentGet {
-            locator: None,
+            session_id: "sess-1".to_string(),
             output_file: None,
         })
         .expect("document get should need a resolution request");
 
-        assert_eq!(request.command, "session.ensure");
+        assert_eq!(request.command, "session.open");
         assert_eq!(request.payload, json!({}));
-        assert_eq!(request.session_id, None);
+        assert_eq!(request.session_id, Some("sess-1".to_string()));
     }
 
     #[test]
-    fn builds_session_ensure_resolution_for_document_svg_without_locator() {
+    fn builds_session_open_resolution_for_document_svg() {
         let request = build_resolution_request(&PackagedCliCommand::CanvasDocumentSvg {
-            locator: None,
+            session_id: "sess-1".to_string(),
             output_file: None,
         })
         .expect("document svg should need a resolution request");
 
-        assert_eq!(request.command, "session.ensure");
+        assert_eq!(request.command, "session.open");
         assert_eq!(request.payload, json!({}));
-        assert_eq!(request.session_id, None);
+        assert_eq!(request.session_id, Some("sess-1".to_string()));
     }
 
     #[test]
-    fn builds_session_open_resolution_for_title_locator() {
+    fn builds_session_open_resolution_for_document_apply() {
         let request = build_resolution_request(&PackagedCliCommand::CanvasDocumentApply {
-            locator: Some(SessionLocator::Title("Alpha".to_string())),
+            session_id: "sess-1".to_string(),
             xml: Some("<mxfile><diagram id='1'>inline</diagram></mxfile>".to_string()),
             xml_file: None,
             xml_stdin: false,
@@ -1094,11 +1250,11 @@ mod tests {
             prompt: Some("open title and apply".to_string()),
             output_file: None,
         })
-        .expect("document apply should build a title-based resolution request");
+        .expect("document apply should build a session-open resolution request");
 
         assert_eq!(request.command, "session.open");
-        assert_eq!(request.payload, json!({ "title": "Alpha" }));
-        assert_eq!(request.session_id, None);
+        assert_eq!(request.payload, json!({}));
+        assert_eq!(request.session_id, Some("sess-1".to_string()));
     }
 
     #[test]
@@ -1114,7 +1270,7 @@ mod tests {
 
         let request = build_request_for_command(
             &PackagedCliCommand::CanvasDocumentRestore {
-                locator: None,
+                session_id: "sess-restore".to_string(),
                 xml: None,
                 xml_file: Some(restore_file.display().to_string()),
                 xml_stdin: false,
@@ -1139,7 +1295,7 @@ mod tests {
     fn build_request_for_document_apply_requires_non_empty_prompt() {
         let error = build_request_for_command(
             &PackagedCliCommand::CanvasDocumentApply {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 xml: Some("<mxfile />".to_string()),
                 xml_file: None,
                 xml_stdin: false,
@@ -1155,18 +1311,18 @@ mod tests {
     }
 
     #[test]
-    fn builds_session_open_request_with_title_payload() {
+    fn builds_session_open_request_with_session_id() {
         let request = build_request_for_command(
             &PackagedCliCommand::SessionOpen {
-                locator: SessionLocator::Title("Alpha".to_string()),
+                session_id: "sess-1".to_string(),
             },
             None,
         )
         .expect("session open request should build");
 
         assert_eq!(request.command, "session.open");
-        assert_eq!(request.payload, json!({ "title": "Alpha" }));
-        assert_eq!(request.session_id, None);
+        assert_eq!(request.payload, json!({}));
+        assert_eq!(request.session_id, Some("sess-1".to_string()));
     }
 
     #[test]
@@ -1197,7 +1353,7 @@ mod tests {
 
         maybe_write_output_file(
             &PackagedCliCommand::CanvasDocumentSvg {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 output_file: Some(output_dir.display().to_string()),
             },
             &mut response,
@@ -1247,7 +1403,7 @@ mod tests {
 
         maybe_write_output_file(
             &PackagedCliCommand::CanvasDocumentPreview {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 output_directory: output_dir.display().to_string(),
                 page: None,
             },
@@ -1304,7 +1460,7 @@ mod tests {
 
         maybe_write_output_file(
             &PackagedCliCommand::CanvasDocumentPreview {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 output_directory: output_dir.display().to_string(),
                 page: Some(2),
             },
@@ -1351,7 +1507,7 @@ mod tests {
 
         maybe_write_output_file(
             &PackagedCliCommand::CanvasDocumentPreview {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 output_directory: output_dir.display().to_string(),
                 page: Some(3),
             },
@@ -1442,28 +1598,28 @@ mod tests {
     }
 
     #[test]
-    fn all_non_status_commands_require_a_running_desktop_app() {
+    fn commands_that_need_control_server_require_a_running_desktop_app() {
         let commands = [
-            PackagedCliCommand::ConversationCreate,
+            PackagedCliCommand::SessionCreate,
             PackagedCliCommand::SessionList,
             PackagedCliCommand::SessionOpen {
-                locator: SessionLocator::Id("sess-1".to_string()),
+                session_id: "sess-1".to_string(),
             },
             PackagedCliCommand::CanvasDocumentGet {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 output_file: None,
             },
             PackagedCliCommand::CanvasDocumentSvg {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 output_file: None,
             },
             PackagedCliCommand::CanvasDocumentPreview {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 output_directory: "./previews".to_string(),
                 page: None,
             },
             PackagedCliCommand::CanvasDocumentApply {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 xml: Some("<mxfile />".to_string()),
                 xml_file: None,
                 xml_stdin: false,
@@ -1472,7 +1628,7 @@ mod tests {
                 output_file: None,
             },
             PackagedCliCommand::CanvasDocumentRestore {
-                locator: None,
+                session_id: "sess-1".to_string(),
                 xml: Some("<mxfile />".to_string()),
                 xml_file: None,
                 xml_stdin: false,
@@ -1485,5 +1641,8 @@ mod tests {
         }
 
         assert!(!requires_running_app(&PackagedCliCommand::Status));
+        assert!(!requires_running_app(&PackagedCliCommand::Open {
+            mode: OpenMode::Tray
+        }));
     }
 }

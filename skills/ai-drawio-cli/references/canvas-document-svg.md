@@ -2,21 +2,19 @@
 
 Use this when the task is to inspect or export the current document as SVG pages.
 
-## Commands
-
-Minimal command:
+## Command
 
 ```bash
-ai-drawio canvas document.svg
+ai-drawio canvas document.svg sess-123
 ```
 
-Write SVG pages to disk:
+## Optional Output
 
 ```bash
-ai-drawio canvas document.svg --output-file ./exports
+ai-drawio canvas document.svg sess-123 --output-file ./exports
 ```
 
-- Use this directly for SVG export.
+- Every svg command must include the target session id as the first positional argument.
 - Add `--output-file` only when the SVG pages must be written to disk.
-- If the app is not running, this command returns `APP_NOT_RUNNING`.
 - `--output-file` is a directory, not a single SVG file.
+- If the app is not running, this command returns `APP_NOT_RUNNING`.

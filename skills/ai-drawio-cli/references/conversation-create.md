@@ -1,6 +1,6 @@
 # `ai-drawio conversation create`
 
-Use only when the user explicitly wants a new local conversation created.
+Use this only when the exact command name matters. This is a compatibility alias for `ai-drawio session create`.
 
 ## Command
 
@@ -8,6 +8,6 @@ Use only when the user explicitly wants a new local conversation created.
 ai-drawio conversation create
 ```
 
-- Use with no extra flags.
-- Do not run `ai-drawio status` first unless the task is specifically about status.
+- This command is a compatibility alias for `ai-drawio session create`.
+- It creates a new persisted session, opens it, waits for readiness, and returns the new session id.
 - If the app is not running, this command returns `APP_NOT_RUNNING`.

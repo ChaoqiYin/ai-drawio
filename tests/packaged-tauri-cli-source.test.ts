@@ -7,15 +7,17 @@ const BUILD_SOURCE_PATH = new URL("../src-tauri/build.rs", import.meta.url);
 const CARGO_TOML_PATH = new URL("../src-tauri/Cargo.toml", import.meta.url);
 const TAURI_CONFIG_PATH = new URL("../src-tauri/tauri.conf.json", import.meta.url);
 const PACKAGED_CLI_SOURCE_PATH = new URL("../src-tauri/src/packaged_cli.rs", import.meta.url);
+const CLI_SCHEMA_SOURCE_PATH = new URL("../src-tauri/src/cli_schema.rs", import.meta.url);
 const PACKAGE_JSON_PATH = new URL("../package.json", import.meta.url);
 const MACOS_APP_ICON_PATH = new URL("../assets/ai-drawio.icns", import.meta.url);
 
 test("packaged tauri cli wires plugin, parser, and completion generation", async () => {
-  const [mainSource, buildSource, cargoToml, tauriConfig] = await Promise.all([
+  const [mainSource, buildSource, cargoToml, tauriConfig, cliSchemaSource] = await Promise.all([
     readFile(MAIN_SOURCE_PATH, "utf8"),
     readFile(BUILD_SOURCE_PATH, "utf8"),
     readFile(CARGO_TOML_PATH, "utf8"),
-    readFile(TAURI_CONFIG_PATH, "utf8")
+    readFile(TAURI_CONFIG_PATH, "utf8"),
+    readFile(CLI_SCHEMA_SOURCE_PATH, "utf8")
   ]);
 
   let packagedCliSource = "";
@@ -35,11 +37,21 @@ test("packaged tauri cli wires plugin, parser, and completion generation", async
   assert.match(tauriConfig, /"plugins"\s*:\s*\{/);
   assert.match(tauriConfig, /"cli"\s*:/);
   assert.match(tauriConfig, /"document\.apply"/);
+  assert.match(cliSchemaSource, /Command::new\("open"\)/);
+  assert.match(
+    cliSchemaSource,
+    /Arg::new\("mode"\)[\s\S]*\.long\("mode"\)[\s\S]*\.value_name\("mode"\)[\s\S]*\.default_value\("tray"\)/
+  );
   assert.match(packagedCliSource, /document\.svg/);
   assert.match(packagedCliSource, /document\.preview/);
+  assert.match(packagedCliSource, /\bOpenMode::Tray\b/);
+  assert.match(packagedCliSource, /\bOpenMode::Window\b/);
   assert.match(packagedCliSource, /session open <session-id>|session-id/);
   assert.match(packagedCliSource, /xml-stdin/);
-  assert.doesNotMatch(packagedCliSource, /\bPackagedCliCommand::Open\b/);
+  assert.match(packagedCliSource, /\bPackagedCliCommand::Open\b/);
+  assert.match(packagedCliSource, /STARTUP_MODE_ENV_VAR/);
+  assert.match(packagedCliSource, /std::env::current_exe/);
+  assert.match(packagedCliSource, /Command::new\(current_exe\)/);
 });
 
 test("package scripts keep direct tauri build entrypoints without wrapper shell scripts", async () => {
@@ -63,9 +75,16 @@ test("package scripts keep direct tauri build entrypoints without wrapper shell 
   assert.match(tauriConfig, /"SharedSupport\/cli-completions\/ai-drawio\.fish"/);
   assert.match(readme, /npm run build -- --bundles dmg/);
   assert.match(readme, /Install ai-drawio into PATH/);
-  assert.match(readme, /ai-drawio canvas document\.preview <output-directory>/);
-  assert.match(readme, /ai-drawio canvas document\.preview <output-directory> --page <page-number>/);
-  assert.doesNotMatch(readme, /ai-drawio open/);
+  assert.match(readme, /ai-drawio session create/);
+  assert.match(readme, /ai-drawio session open <session-id>/);
+  assert.match(readme, /ai-drawio canvas document\.get <session-id>/);
+  assert.match(readme, /ai-drawio canvas document\.preview <session-id> <output-directory>/);
+  assert.match(readme, /ai-drawio canvas document\.preview <session-id> <output-directory> --page <page-number>/);
+  assert.match(readme, /ai-drawio canvas document\.apply <session-id> <prompt>/);
+  assert.doesNotMatch(readme, /session open --title/);
+  assert.doesNotMatch(readme, /canvas document\.get --session/);
+  assert.match(readme, /ai-drawio open/);
+  assert.match(readme, /ai-drawio open --mode window/);
 });
 
 test("macOS dmg bundle sources the packaged app icon from the shared icns asset", async () => {

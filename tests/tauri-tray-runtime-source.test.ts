@@ -21,6 +21,23 @@ test("tauri runtime wires persistent tray settings and close interception", asyn
   assert.match(mainSource, /register_close_interceptor/);
   assert.match(mainSource, /main_window\.hide\(\)/);
   assert.match(mainSource, /setup_tray/);
+  assert.match(traySettingsSource, /const STARTUP_MODE_ENV_VAR: &str = "AI_DRAWIO_OPEN_MODE";/);
+  assert.match(
+    traySettingsSource,
+    /enum StartupMode \{[\s\S]*Tray[\s\S]*Window[\s\S]*\}/
+  );
+  assert.match(
+    traySettingsSource,
+    /fn read_startup_mode_override\(\) -> Option<StartupMode> \{/
+  );
+  assert.match(
+    traySettingsSource,
+    /fn resolve_effective_tray_enabled\(\s*app: &AppHandle,\s*preference: TrayPreference\s*\) -> bool \{/
+  );
+  assert.match(
+    traySettingsSource,
+    /fn current_effective_tray_preference\(app: &AppHandle\) -> Result<TrayPreference, String> \{/
+  );
   assert.match(traySettingsSource, /const TRAY_RUNTIME_STATE_CHANGE_EVENT: &str = "ai-drawio:tray-runtime-state-change";/);
   assert.match(traySettingsSource, /fn emit_tray_runtime_state_change\(app: &AppHandle\)/);
   assert.match(
@@ -46,7 +63,10 @@ test("tauri runtime wires persistent tray settings and close interception", asyn
     /fn apply_macos_startup_tray_mode\(_?app: &AppHandle, _?enabled: bool\) -> Result<\(\), String> \{[\s\S]*apply_macos_tray_mode\(app, enabled\)/
   );
   assert.match(traySettingsSource, /show_main_window\(app\)/);
-  assert.match(traySettingsSource, /main_window\.unminimize\(\)\.map_err\(\|error\| error\.to_string\(\)\)\?/);
+  assert.match(
+    traySettingsSource,
+    /main_window[\s\S]*\.unminimize\(\)[\s\S]*map_err\(\|error\| error\.to_string\(\)\)\?/
+  );
   assert.match(traySettingsSource, /remove_tray\(app\);/);
   assert.match(
     traySettingsSource,
@@ -68,10 +88,15 @@ test("tauri runtime wires persistent tray settings and close interception", asyn
     traySettingsSource,
     /if event.id\(\) == TRAY_MENU_SHOW_ID \{[\s\S]*schedule_restore_main_window_from_tray\(app\);/
   );
-  assert.match(traySettingsSource, /apply_macos_startup_tray_mode\(app, preference\.enabled\)\?/);
+  assert.match(traySettingsSource, /let effective_preference = current_effective_tray_preference\(app\)\?;/);
+  assert.match(traySettingsSource, /apply_macos_startup_tray_mode\(app, effective_preference\.enabled\)\?/);
   assert.match(
     traySettingsSource,
-    /if enabled \{[\s\S]*create_tray\(app\)\?;[\s\S]*apply_macos_tray_mode\(app, true\)\?;[\s\S]*set_runtime_enabled\(state, true\);/
+    /if effective_preference\.enabled \{[\s\S]*create_tray\(app\)\?;[\s\S]*\}/
+  );
+  assert.match(
+    traySettingsSource,
+    /pub fn should_show_main_window_on_app_ready\(app: &AppHandle\) -> bool \{[\s\S]*current_effective_tray_preference\(app\)[\s\S]*!effective_preference\.enabled/
   );
   assert.match(
     traySettingsSource,
@@ -88,6 +113,8 @@ test("tauri runtime wires persistent tray settings and close interception", asyn
   assert.doesNotMatch(traySettingsSource, /sync_dock_visibility/);
   assert.doesNotMatch(traySettingsSource, /sync_window_taskbar_visibility/);
   assert.doesNotMatch(traySettingsSource, /activate_macos_application/);
+  assert.doesNotMatch(traySettingsSource, /log_window_probe/);
+  assert.doesNotMatch(traySettingsSource, /\[tray-probe\]/);
   assert.match(traySettingsSource, /show_menu_on_left_click\(true\)/);
   assert.doesNotMatch(traySettingsSource, /\[tray-debug\]/);
   assert.doesNotMatch(traySettingsSource, /on_tray_icon_event/);

@@ -42,47 +42,50 @@ The desktop app starts on a local AI conversation history page and opens draw.io
 - The DMG install flow is drag-and-drop first, then explicit in-app registration from Settings.
 - Use `Install ai-drawio into PATH` from the Settings page to register `/usr/local/bin/ai-drawio`.
 - When invoked from a terminal with a CLI command, the binary behaves like a helper:
-  - it connects to an already running desktop instance when possible
-  - otherwise it returns a structured response telling the caller to open the desktop window manually
+  - `ai-drawio open` can launch the desktop app directly
+  - other commands connect to an already running desktop instance when possible
+  - otherwise non-open commands return a structured response telling the caller to open the desktop window manually
 - Shell completion artifacts are generated into `src-tauri/target/cli-completions/` during Rust/Tauri builds.
 - The in-app PATH installer creates the binary link at `/usr/local/bin/ai-drawio` and installs completions into:
   - `/usr/local/share/zsh/site-functions/_ai-drawio`
   - `/usr/local/etc/bash_completion.d/ai-drawio`
   - `/usr/local/share/fish/vendor_completions.d/ai-drawio.fish`
 
+- `ai-drawio open`
+  Launches the desktop app and defaults to tray startup mode.
+- `ai-drawio open --mode window`
+  Launches the desktop app in window mode for this run only without persisting the tray preference.
 - `ai-drawio session list`
   Lists all persisted local sessions and returns each session `id` and `title`.
-- `ai-drawio session open <conversation-id>`
-  Opens one persisted session by id.
-- `ai-drawio session open --title <conversation-title>`
-  Opens one persisted session by exact title.
-- `ai-drawio canvas document.get`
-  Automatically ensures there is a ready session detail page before reading the document.
-- `ai-drawio canvas document.get --session <conversation-id>`
-  Uses a strict explicit session override.
-- `ai-drawio canvas document.preview <output-directory>`
-  Exports every page of the current draw.io document as PNG preview files into the required output directory and returns JSON with absolute file paths.
-- `ai-drawio canvas document.preview <output-directory> --page <page-number>`
-  Exports only the selected 1-based page as a PNG preview file into the required output directory and returns JSON with the generated file path.
-- `ai-drawio canvas document.apply <prompt> '<mxfile>...</mxfile>'`
-  Treats the first positional argument as the required request summary and the second positional argument as inline XML content before applying the document.
-- `ai-drawio canvas document.apply <prompt> --xml-file <path>`
-  Treats the first positional argument as the required request summary and reads the XML content from a file path before applying the document.
-- `ai-drawio canvas document.apply <prompt> --xml-stdin`
-  Treats the first positional argument as the required request summary and reads the document from stdin instead of an inline XML argument.
-- `ai-drawio canvas document.restore '<mxfile>...</mxfile>'`
-  Restores inline XML content without adding canvas history.
-- `ai-drawio canvas document.restore --xml-file <path>`
-  Reads restore XML content from a file path.
-- `--session <conversation-id>`
-  Remains available as a strict override. When provided, the CLI must open and operate on that exact persisted session id, and it fails directly if the id does not exist.
+- `ai-drawio session create`
+  Creates a new persisted session, opens it, waits until the draw.io runtime is ready, and returns the new `sessionId`.
+- `ai-drawio session open <session-id>`
+  Opens one persisted session by id and waits until it is ready.
+- `ai-drawio canvas document.get <session-id>`
+  Reads the current draw.io document from the specified ready session.
+- `ai-drawio canvas document.svg <session-id> --output-file <path>`
+  Exports per-page SVG files from the specified session into the output directory.
+- `ai-drawio canvas document.preview <session-id> <output-directory>`
+  Exports every page of the specified draw.io document as PNG preview files into the required output directory and returns JSON with absolute file paths.
+- `ai-drawio canvas document.preview <session-id> <output-directory> --page <page-number>`
+  Exports only the selected 1-based page from the specified session as a PNG preview file and returns JSON with the generated file path.
+- `ai-drawio canvas document.apply <session-id> <prompt> '<mxfile>...</mxfile>'`
+  Treats the first positional argument as the target session id, the second as the required request summary, and the third as inline XML content before applying the document.
+- `ai-drawio canvas document.apply <session-id> <prompt> --xml-file <path>`
+  Uses the target session id and request summary first, then reads the XML content from a file path before applying the document.
+- `ai-drawio canvas document.apply <session-id> <prompt> --xml-stdin`
+  Uses the target session id and request summary first, then reads the document from stdin instead of an inline XML argument.
+- `ai-drawio canvas document.restore <session-id> '<mxfile>...</mxfile>'`
+  Restores inline XML content to the specified session without adding canvas history.
+- `ai-drawio canvas document.restore <session-id> --xml-file <path>`
+  Reads restore XML content from a file path for the specified session.
 
-Default automatic flow:
+Session targeting rules:
 
-1. If the desktop app is not open, the CLI returns a manual-launch prompt instead of starting it.
-2. If the app is not already on a ready session detail page, create a real persisted session and open it.
-3. If the app is already on a ready session detail page, reuse it.
-4. Perform the requested document operation.
+1. CLI operations on existing sessions must use an explicit positional `session-id`.
+2. The CLI does not resolve sessions by title.
+3. The CLI does not auto-select or auto-create a session for canvas commands.
+4. If a command depends on the draw.io iframe runtime, the CLI first opens the requested session and waits for readiness.
 
 ## Backend Commands
 

@@ -2,35 +2,32 @@
 
 Use this only for rollback or revert workflows.
 
-## Commands
-
-Inline XML:
+## Command
 
 ```bash
-ai-drawio canvas document.restore '<mxfile><diagram id="page-1">...</diagram></mxfile>'
+ai-drawio canvas document.restore sess-123 '<mxfile><diagram id="page-1">...</diagram></mxfile>'
 ```
 
-With optional targeting or metadata:
+## Optional Base Version
 
 ```bash
-ai-drawio canvas document.restore '<mxfile><diagram id="page-1">...</diagram></mxfile>' --session sess-123
-ai-drawio canvas document.restore '<mxfile><diagram id="page-1">...</diagram></mxfile>' --session-title "Architecture Draft"
-ai-drawio canvas document.restore '<mxfile><diagram id="page-1">...</diagram></mxfile>' --base-version sha256:restore
+ai-drawio canvas document.restore sess-123 '<mxfile><diagram id="page-1">...</diagram></mxfile>' --base-version sha256:restore
 ```
 
-From a file:
+## Optional XML File
 
 ```bash
-ai-drawio canvas document.restore --xml-file ./restore.drawio
+ai-drawio canvas document.restore sess-123 --xml-file ./restore.drawio
 ```
 
-From stdin:
+## Optional Stdin
 
 ```bash
-cat ./restore.drawio | ai-drawio canvas document.restore --xml-stdin
+cat ./restore.drawio | ai-drawio canvas document.restore sess-123 --xml-stdin
 ```
 
 - Use this only for rollback or revert workflows.
+- Every restore command must include the target session id as the first positional argument.
 - Prefer one multi-diagram XML payload over several separate XML payloads when one request includes multiple diagrams.
 - Prefer inline XML when the XML is already in memory.
 - Use `--xml-file` only when the XML already exists on disk.
