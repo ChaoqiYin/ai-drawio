@@ -10,7 +10,7 @@ export default function SessionWorkspaceHost({
   sessionId: string;
 }) {
   return (
-    <div className={hidden ? 'hidden' : 'flex min-h-0 flex-1'} data-session-host={sessionId}>
+    <div className={hidden ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 overflow-hidden'} data-session-host={sessionId}>
       <SessionWorkspace hidden={hidden} sessionId={sessionId} />
     </div>
   );

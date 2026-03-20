@@ -34,6 +34,28 @@ test("home page links to settings and settings page renders cli integration acti
   assert.match(settingsSource, /InternalBreadcrumb/);
   assert.match(settingsSource, /const handleNavigateBack = \(\): void => \{/);
   assert.match(settingsSource, /router\.push\("\/"\)/);
+  assert.match(settingsSource, /<div className=\{shellClassName\}>/);
+  assert.match(
+    settingsSource,
+    /const shellClassName =\s*"internal-app-shell mx-auto flex h-screen min-h-0 min-w-0 w-full flex-col overflow-hidden px-3! py-3! md:px-5! md:py-5!";/
+  );
+  assert.match(settingsSource, /data-layout="settings-shell-header"/);
+  assert.match(settingsSource, /data-layout="settings-body"/);
+  assert.match(settingsSource, /data-layout="settings-card-list"/);
+  assert.match(sourceSafe(settingsSource), /className="mb-\[14px\]! h-auto shrink-0 bg-transparent p-0" data-layout="settings-shell-header"/);
+  assert.match(sourceSafe(settingsSource), /className="relative z-\[1\] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" data-layout="settings-body"/);
+  assert.match(
+    sourceSafe(settingsSource),
+    /className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto" data-layout="settings-card-list"/
+  );
+  assert.match(
+    sourceSafe(settingsSource),
+    /className="internal-panel bg-transparent shrink-0" data-layout="settings-tray-card"/
+  );
+  assert.match(
+    sourceSafe(settingsSource),
+    /className="internal-panel bg-transparent h-\[320px\] shrink-0" data-layout="settings-cli-card"/
+  );
   assert.match(settingsSource, /data-layout="settings-top-nav-body"/);
   assert.match(settingsSource, /dataLayout="settings-breadcrumb"/);
   assert.match(settingsSource, /const breadcrumbRoutes:\s*InternalBreadcrumbRoute\[\]\s*=\s*\[/);
@@ -54,6 +76,46 @@ test("home page links to settings and settings page renders cli integration acti
   assert.match(settingsSource, /installCliToPath/);
   assert.match(settingsSource, /getCliInstallStatusLabel/);
   assert.match(settingsSource, /getCliInstallStatusColor/);
+  assert.match(settingsSource, /getTraySettings/);
+  assert.match(settingsSource, /setTrayEnabled/);
+  assert.match(settingsSource, /subscribeTrayRuntimeStateChange/);
+  assert.match(settingsSource, /TraySettingsState/);
+  assert.match(settingsSource, /mainWindowVisible/);
+  assert.match(settingsSource, /系统托盘/);
+  assert.match(settingsSource, /当前状态：/);
+  assert.match(settingsSource, /托盘中/);
+  assert.match(settingsSource, /主界面/);
+  assert.match(settingsSource, /未启用/);
+  assert.match(
+    settingsSource,
+    /const trayRuntimeStatus = traySettings\.mainWindowVisible\s*\?\s*"当前状态：主界面"\s*:\s*traySettings\.enabled\s*\?\s*"当前状态：托盘中"\s*:\s*"当前状态：未启用";/
+  );
+  assert.match(settingsSource, /读取托盘状态失败。/);
+  assert.match(settingsSource, /更新托盘设置失败。/);
+  assert.match(settingsSource, /<Switch/);
+  assert.match(settingsSource, /checked=\{traySettings\.enabled\}/);
+  assert.match(settingsSource, /loading=\{isTogglingTray\}/);
+  assert.match(settingsSource, /onChange=\{handleTrayEnabledChange\}/);
+  assert.match(settingsSource, /disabled=\{isLoadingTray \|\| isTogglingTray\}/);
+  assert.match(settingsSource, /window\.addEventListener\("focus", handleWindowFocus\)/);
+  assert.match(settingsSource, /document\.addEventListener\("visibilitychange", handleVisibilityChange\)/);
+  assert.match(settingsSource, /const unsubscribeTrayRuntimeStateChange = subscribeTrayRuntimeStateChange\(\(\) => \{/);
+  assert.match(settingsSource, /void loadTrayStatus\(\{ clearError: false \}\);/);
+  assert.match(settingsSource, /unsubscribeTrayRuntimeStateChange\(\);/);
+  assert.match(settingsSource, /data-layout="settings-tray-card"/);
+  assert.match(settingsSource, /data-testid="tray-runtime-status"/);
+  assert.match(settingsSource, /data-layout="settings-cli-card"/);
+  assert.match(
+    settingsSource,
+    /data-layout="settings-tray-card"[\s\S]*data-layout="settings-cli-card"/
+  );
+  assert.doesNotMatch(settingsSource, /label: "托盘状态"/);
+  assert.doesNotMatch(settingsSource, /label: "关闭按钮行为"/);
+  assert.doesNotMatch(settingsSource, /<Text key=\{trayRenderDebugState\} type="secondary">\s*\{trayRuntimeStatus\}\s*<\/Text>/);
+  assert.doesNotMatch(settingsSource, /\[tray-debug\]/);
+  assert.doesNotMatch(settingsSource, /debug instance=/);
+  assert.doesNotMatch(settingsSource, /render state=/);
+  assert.doesNotMatch(settingsSource, /dom text=/);
   assert.match(
     settingsSource,
     /label: "当前状态"[\s\S]*value:\s*<Tag color=\{getCliInstallStatusColor\(status\.status\)\}>[\s\S]*getCliInstallStatusLabel\(status\.status\)[\s\S]*<\/Tag>/
@@ -64,6 +126,9 @@ test("home page links to settings and settings page renders cli integration acti
   );
   assert.doesNotMatch(settingsSource, /function getStatusLabel/);
   assert.doesNotMatch(settingsSource, /function getStatusColor/);
+  assert.doesNotMatch(settingsSource, /<Layout/);
+  assert.doesNotMatch(settingsSource, /<Header/);
+  assert.doesNotMatch(settingsSource, /<Content/);
   assert.doesNotMatch(settingsSource, /将 <Text code>\/usr\/local\/bin\/ai-drawio<\/Text> 安装到系统 PATH/);
   assert.doesNotMatch(settingsSource, /const renderBreadcrumbItem = \(/);
   assert.doesNotMatch(settingsSource, /type BreadcrumbRoute = \{/);
@@ -85,3 +150,7 @@ test("settings page uses tauri cli install helpers", async () => {
   assert.match(helperSource, /completionInstalled:\s*boolean/);
   assert.match(helperSource, /__TAURI__\?\.core/);
 });
+
+function sourceSafe(source: string): string {
+  return source.replace(/\s+/g, " ");
+}

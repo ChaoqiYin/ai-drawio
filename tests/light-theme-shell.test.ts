@@ -15,6 +15,14 @@ test("shell globals define a transparent page background with white card surface
   assert.match(source, /\.internal-panel\s*\{[\s\S]*border-radius:\s*8px;[\s\S]*background:\s*var\(--internal-surface-base\);/);
   assert.match(source, /\.internal-page-list-card\s*\{[\s\S]*border-radius:\s*8px;[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.98\);/);
   assert.match(source, /\.internal-message-card\s*\{[\s\S]*border-radius:\s*8px;[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.98\);/);
+  assert.match(source, /\.internal-session-tabs\s*\{[\s\S]*overflow:\s*visible;/);
+  assert.match(source, /\.internal-session-tabs\s*\.arco-tabs-header-title\s*\{[\s\S]*padding-top:\s*2px;[\s\S]*padding-bottom:\s*2px;[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.72\);/);
+  assert.match(source, /\.internal-session-tabs\s*\.arco-tabs-header-title-active[\s\S]*background:\s*rgba\(244,\s*248,\s*255,\s*0\.96\);/);
+  assert.match(source, /\.internal-session-tabs\s*\.arco-tabs-content\s*\{[\s\S]*display:\s*none;/);
+  assert.doesNotMatch(source, /0 6px 16px rgba\(15,\s*23,\s*42,\s*0\.04\)/);
+  assert.doesNotMatch(source, /0 10px 22px rgba\(37,\s*99,\s*235,\s*0\.12\)/);
+  assert.doesNotMatch(source, /translateY\(-1px\)/);
+  assert.doesNotMatch(source, /\.internal-session-tabs-shell\s*\{/);
   assert.doesNotMatch(source, /\.internal-gradient-text/);
   assert.doesNotMatch(source, /linear-gradient/);
   assert.doesNotMatch(source, /radial-gradient/);

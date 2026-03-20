@@ -60,13 +60,8 @@ pub fn get_document(
 ) -> Result<Value, ControlError> {
     let state = require_session_ready(app, bridge_state, session_id, timeout)?;
     let script = build_session_document_bridge_script(session_id, "getDocument()")?;
-    let value = eval_main_window_script_with_result(
-        app,
-        bridge_state,
-        &script,
-        timeout,
-    )
-    .map_err(|error| ControlError::new("DOCUMENT_NOT_AVAILABLE", error))?;
+    let value = eval_main_window_script_with_result(app, bridge_state, &script, timeout)
+        .map_err(|error| ControlError::new("DOCUMENT_NOT_AVAILABLE", error))?;
 
     build_document_payload(value, &state)
 }
@@ -79,13 +74,8 @@ pub fn export_svg_pages(
 ) -> Result<Value, ControlError> {
     let state = require_session_ready(app, bridge_state, session_id, timeout)?;
     let script = build_session_document_bridge_script(session_id, "exportSvgPages()")?;
-    let value = eval_main_window_script_with_result(
-        app,
-        bridge_state,
-        &script,
-        timeout,
-    )
-    .map_err(|error| ControlError::new("DOCUMENT_NOT_AVAILABLE", error))?;
+    let value = eval_main_window_script_with_result(app, bridge_state, &script, timeout)
+        .map_err(|error| ControlError::new("DOCUMENT_NOT_AVAILABLE", error))?;
 
     build_svg_pages_payload(value, &state)
 }
@@ -98,13 +88,8 @@ pub fn export_preview_pages(
 ) -> Result<Value, ControlError> {
     let state = require_session_ready(app, bridge_state, session_id, timeout)?;
     let script = build_session_document_bridge_script(session_id, "exportPreviewPages()")?;
-    let value = eval_main_window_script_with_result(
-        app,
-        bridge_state,
-        &script,
-        timeout,
-    )
-    .map_err(|error| ControlError::new("DOCUMENT_NOT_AVAILABLE", error))?;
+    let value = eval_main_window_script_with_result(app, bridge_state, &script, timeout)
+        .map_err(|error| ControlError::new("DOCUMENT_NOT_AVAILABLE", error))?;
 
     build_preview_pages_payload(value, &state)
 }
@@ -119,10 +104,7 @@ pub fn apply_document(
     timeout: Duration,
 ) -> Result<Value, ControlError> {
     if xml.trim().is_empty() {
-        return Err(ControlError::new(
-            "DOCUMENT_INVALID",
-            "xml cannot be empty",
-        ));
+        return Err(ControlError::new("DOCUMENT_INVALID", "xml cannot be empty"));
     }
 
     begin_session_document_action(session_id)?;
@@ -163,7 +145,10 @@ pub fn apply_document(
 
         let mut payload = build_document_payload(value, &state)?;
         if let Some(object) = payload.as_object_mut() {
-            object.insert("previousVersion".to_string(), Value::String(current_version));
+            object.insert(
+                "previousVersion".to_string(),
+                Value::String(current_version),
+            );
         }
 
         Ok(payload)
@@ -183,10 +168,7 @@ pub fn apply_document_without_history(
     timeout: Duration,
 ) -> Result<Value, ControlError> {
     if xml.trim().is_empty() {
-        return Err(ControlError::new(
-            "DOCUMENT_INVALID",
-            "xml cannot be empty",
-        ));
+        return Err(ControlError::new("DOCUMENT_INVALID", "xml cannot be empty"));
     }
 
     begin_session_document_action(session_id)?;
@@ -225,7 +207,10 @@ pub fn apply_document_without_history(
 
         let mut payload = build_document_payload(value, &state)?;
         if let Some(object) = payload.as_object_mut() {
-            object.insert("previousVersion".to_string(), Value::String(current_version));
+            object.insert(
+                "previousVersion".to_string(),
+                Value::String(current_version),
+            );
         }
 
         Ok(payload)
@@ -243,7 +228,10 @@ fn build_document_payload(value: Value, state: &ShellState) -> Result<Value, Con
         .map(str::to_string)
         .filter(|payload| !payload.trim().is_empty())
         .ok_or_else(|| {
-            ControlError::new("DOCUMENT_NOT_AVAILABLE", "document xml is missing from the bridge response")
+            ControlError::new(
+                "DOCUMENT_NOT_AVAILABLE",
+                "document xml is missing from the bridge response",
+            )
         })?;
 
     let timestamp = value
@@ -495,7 +483,10 @@ mod tests {
         .expect("preview payload should build");
 
         assert_eq!(payload["pages"][0]["id"], "page-1");
-        assert_eq!(payload["pages"][0]["pngDataUri"], "data:image/png;base64,cG5n");
+        assert_eq!(
+            payload["pages"][0]["pngDataUri"],
+            "data:image/png;base64,cG5n"
+        );
         assert_eq!(payload["bridgeState"]["sessionId"], "sess-1");
         assert_eq!(payload["timestamp"], "2026-03-19T00:00:00.000Z");
     }

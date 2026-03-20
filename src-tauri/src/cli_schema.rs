@@ -86,7 +86,12 @@ pub fn build_cli_command() -> Command {
                 .subcommand(
                     Command::new("document.apply")
                         .about("Apply a draw.io document to the resolved session")
-                        .arg(Arg::new("prompt").index(1).value_name("prompt").required(true))
+                        .arg(
+                            Arg::new("prompt")
+                                .index(1)
+                                .value_name("prompt")
+                                .required(true),
+                        )
                         .arg(
                             Arg::new("xml")
                                 .index(2)

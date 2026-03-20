@@ -80,8 +80,71 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.92);
   }
 
+  .internal-session-tabs .arco-tabs-header-nav::before {
+    display: none;
+  }
+
+  .internal-session-tabs {
+    overflow: visible;
+  }
+
+  .internal-session-tabs .arco-tabs-header {
+    padding: 0 2px;
+  }
+
+  .internal-session-tabs .arco-tabs-header-title {
+    margin: 0 4px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(255, 255, 255, 0.72);
+    color: #475569;
+    transition:
+      background 180ms ease,
+      border-color 180ms ease,
+      color 180ms ease;
+  }
+
+  .internal-session-tabs .arco-tabs-header-title:hover {
+    background: rgba(255, 255, 255, 0.88);
+    border-color: rgba(148, 163, 184, 0.2);
+    color: #334155;
+  }
+
+  .internal-session-tabs .arco-tabs-header-title-active,
+  .internal-session-tabs .arco-tabs-header-title-active:hover {
+    border-color: rgba(59, 130, 246, 0.22);
+    background: rgba(244, 248, 255, 0.96);
+    color: #0f172a;
+  }
+
+  .internal-session-tabs .arco-tabs-header-ink {
+    display: none;
+  }
+
+  .internal-session-tabs .arco-tabs-content {
+    display: none;
+  }
+
+  .internal-session-tabs .internal-session-tab-title {
+    min-height: 24px;
+  }
+
+  .internal-session-tabs .session-tab-title-text {
+    color: inherit;
+  }
+
+  .internal-session-tabs .session-tab-actions {
+    border-left-color: rgba(148, 163, 184, 0.22);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .internal-page-list-card {
+      transition: none;
+    }
+
+    .internal-session-tabs .arco-tabs-header-title {
       transition: none;
     }
   }

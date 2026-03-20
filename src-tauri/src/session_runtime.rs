@@ -440,7 +440,8 @@ pub fn open_session(
 ) -> Result<ShellState, ControlError> {
     show_main_window(app)?;
 
-    if let Ok(state) = require_session_ready(app, bridge_state, session_id, Duration::from_secs(2)) {
+    if let Ok(state) = require_session_ready(app, bridge_state, session_id, Duration::from_secs(2))
+    {
         return Ok(state);
     }
 
@@ -505,26 +506,26 @@ pub fn require_session_ready(
     }
 
     if !runtime_state.is_ready {
-        return Err(ControlError::new(
-            "FRAME_NOT_READY",
-            "draw.io iframe bridge is not ready",
-        )
-        .with_details(json!({
-            "requestedSessionId": session_id,
-            "status": runtime_state.status
-        })));
+        return Err(
+            ControlError::new("FRAME_NOT_READY", "draw.io iframe bridge is not ready")
+                .with_details(json!({
+                    "requestedSessionId": session_id,
+                    "status": runtime_state.status
+                })),
+        );
     }
 
-    let fallback_shell_state = get_shell_state(app, bridge_state, Duration::from_secs(2)).unwrap_or(ShellState {
-        bootstrap_error: None,
-        bridge_ready: true,
-        conversation_loaded: true,
-        document_loaded: true,
-        frame_ready: true,
-        last_event: runtime_state.status.clone(),
-        route: build_session_route(session_id),
-        session_id: session_id.to_string(),
-    });
+    let fallback_shell_state = get_shell_state(app, bridge_state, Duration::from_secs(2))
+        .unwrap_or(ShellState {
+            bootstrap_error: None,
+            bridge_ready: true,
+            conversation_loaded: true,
+            document_loaded: true,
+            frame_ready: true,
+            last_event: runtime_state.status.clone(),
+            route: build_session_route(session_id),
+            session_id: session_id.to_string(),
+        });
 
     Ok(ShellState {
         bootstrap_error: fallback_shell_state.bootstrap_error,
@@ -557,7 +558,9 @@ fn wait_for_session_ready(
             }
         }
 
-        if let Ok(state) = require_session_ready(app, bridge_state, session_id, Duration::from_secs(2)) {
+        if let Ok(state) =
+            require_session_ready(app, bridge_state, session_id, Duration::from_secs(2))
+        {
             return Ok(state);
         }
 

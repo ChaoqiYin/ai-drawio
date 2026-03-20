@@ -72,24 +72,26 @@ fn handle_request(app: &AppHandle, request: ControlRequest) -> ControlResponse {
         CommandKind::SessionEnsure => {
             session_runtime::ensure_session(app, &bridge_state, timeout).map(|state| json!(state))
         }
-        CommandKind::Status => match session_runtime::get_shell_state(app, &bridge_state, timeout) {
-            Ok(state) => Ok(json!({
-                "address": CONTROL_ADDR,
-                "running": true,
-                "shell": state
-            })),
-            Err(error) => {
-                if error.code == "APP_NOT_READY" {
-                    Ok(json!({
-                        "address": CONTROL_ADDR,
-                        "running": true,
-                        "shell": null
-                    }))
-                } else {
-                    Err(error)
+        CommandKind::Status => {
+            match session_runtime::get_shell_state(app, &bridge_state, timeout) {
+                Ok(state) => Ok(json!({
+                    "address": CONTROL_ADDR,
+                    "running": true,
+                    "shell": state
+                })),
+                Err(error) => {
+                    if error.code == "APP_NOT_READY" {
+                        Ok(json!({
+                            "address": CONTROL_ADDR,
+                            "running": true,
+                            "shell": null
+                        }))
+                    } else {
+                        Err(error)
+                    }
                 }
             }
-        },
+        }
         CommandKind::SessionOpen => {
             let title = request
                 .payload
@@ -136,13 +138,12 @@ fn handle_request(app: &AppHandle, request: ControlRequest) -> ControlResponse {
                 })
             }
         }
-        CommandKind::SessionList => {
-            session_runtime::list_sessions(app, &bridge_state, timeout).map(|sessions| {
+        CommandKind::SessionList => session_runtime::list_sessions(app, &bridge_state, timeout)
+            .map(|sessions| {
                 json!({
                     "sessions": sessions
                 })
-            })
-        }
+            }),
         CommandKind::CanvasDocumentGet => {
             let session_id = request
                 .require_session_id()

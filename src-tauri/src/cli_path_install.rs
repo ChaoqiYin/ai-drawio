@@ -325,7 +325,8 @@ mod tests {
         fs::create_dir_all(current_target.parent().expect("missing parent"))
             .expect("failed to create target parent");
         fs::write(&current_target, "binary").expect("failed to write target");
-        std::os::unix::fs::symlink(&current_target, &command_path).expect("failed to create symlink");
+        std::os::unix::fs::symlink(&current_target, &command_path)
+            .expect("failed to create symlink");
 
         let status = inspect_cli_install(&command_path, &current_target);
 
@@ -390,7 +391,9 @@ mod tests {
             true,
             true,
             false,
-            Some(PathBuf::from("/Applications/AI Drawio.app/Contents/MacOS/ai-drawio")),
+            Some(PathBuf::from(
+                "/Applications/AI Drawio.app/Contents/MacOS/ai-drawio",
+            )),
             "Installed command only.",
             None,
         );

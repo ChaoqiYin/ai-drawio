@@ -152,7 +152,10 @@ impl ControlRequest {
 
                 if let Some(page) = self.payload.get("page") {
                     let page = page.as_u64().ok_or_else(|| {
-                        ControlError::new("VALIDATION_FAILED", "payload.page must be a positive integer")
+                        ControlError::new(
+                            "VALIDATION_FAILED",
+                            "payload.page must be a positive integer",
+                        )
                     })?;
 
                     if page == 0 {
@@ -274,7 +277,9 @@ mod tests {
     #[test]
     fn rejects_unsupported_commands() {
         let request = base_request("canvas.unknown");
-        let error = request.validate().expect_err("unsupported command must fail");
+        let error = request
+            .validate()
+            .expect_err("unsupported command must fail");
 
         assert_eq!(error.code, "UNSUPPORTED_COMMAND");
     }

@@ -98,7 +98,9 @@ pub fn eval_main_window_script(app: &AppHandle, request: &EvalRequest) -> Result
 
 pub fn eval_script_on_window(window: &WebviewWindow, script: &str) -> Result<(), String> {
     let wrapped_script = build_script_eval_script(script)?;
-    window.eval(wrapped_script).map_err(|error| error.to_string())
+    window
+        .eval(wrapped_script)
+        .map_err(|error| error.to_string())
 }
 
 pub fn eval_main_window_script_with_result(
@@ -160,11 +162,7 @@ pub fn eval_script_on_window_with_result(
         }
     };
 
-    if payload
-        .get("ok")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
+    if payload.get("ok").and_then(Value::as_bool).unwrap_or(false) {
         Ok(payload.get("value").cloned().unwrap_or(Value::Null))
     } else {
         Err(payload
@@ -292,8 +290,7 @@ pub fn build_result_bridge_eval_script(request_id: &str, script: &str) -> Result
         return Err("script cannot be empty".into());
     }
 
-    let request_id_json =
-        serde_json::to_string(request_id).map_err(|error| error.to_string())?;
+    let request_id_json = serde_json::to_string(request_id).map_err(|error| error.to_string())?;
 
     Ok(format!(
         r#"

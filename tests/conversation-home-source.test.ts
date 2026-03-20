@@ -45,6 +45,8 @@ test("conversation home source includes delete actions", async () => {
   assert.doesNotMatch(source, /ConversationHomeProps/);
   assert.match(source, /internal-app-shell/);
   assert.match(source, /px-3! py-3! md:px-5! md:py-5!/);
+  assert.match(source, /<div className=\{shellClassName\}>/);
+  assert.match(source, /<div className="relative z-\[1\]">/);
   assert.match(source, /internal-page-list-card/);
   assert.match(source, /accentSurfaceClassName/);
   assert.match(source, /softSurfaceClassName/);
@@ -96,6 +98,8 @@ test("conversation home source includes delete actions", async () => {
   assert.doesNotMatch(source, /当前桌面壳会将 AI 会话历史仅保存在浏览器 IndexedDB 中/);
   assert.doesNotMatch(source, /先选择一条已保存的 AI 会话，再进入画布工作区/);
   assert.doesNotMatch(source, /bg-\[rgba\(4,8,12,0\.52\)\]/);
+  assert.doesNotMatch(source, /<Layout/);
+  assert.doesNotMatch(source, /<Content/);
   assert.doesNotMatch(source, /internal-page-hero-card/);
   assert.doesNotMatch(source, /internal-page-section-card/);
   assert.doesNotMatch(source, /internal-page-overlay-card/);

@@ -8,7 +8,6 @@ import {
   Card,
   Empty,
   Input,
-  Layout,
   Modal,
   Popconfirm,
   Space,
@@ -36,7 +35,7 @@ import { getCliInstallStatus, type CliInstallStatus } from '../_lib/tauri-cli-in
 import { useWorkspaceSessionStore } from '../_lib/workspace-session-store';
 
 const shellClassName =
-  'internal-app-shell mx-auto flex min-h-screen w-full max-w-[1480px] flex-col px-3! py-3! md:px-5! md:py-5!';
+  'internal-app-shell mx-auto flex min-h-screen w-full flex-col px-3! py-3! md:px-5! md:py-5!';
 const accentSurfaceClassName = 'bg-transparent';
 const softSurfaceClassName = 'bg-transparent';
 const overlaySurfaceClassName = 'bg-white/95';
@@ -49,7 +48,6 @@ const listCardStyle = {
   cursor: 'pointer',
 } as const;
 const subtleTextStyle = { color: 'var(--color-text-3)' } as const;
-const { Content } = Layout;
 const { Paragraph, Text, Title } = Typography;
 
 function formatDate(value: string): string {
@@ -293,8 +291,8 @@ export default function ConversationHome() {
   }
 
   return (
-    <Layout className={shellClassName}>
-      <Content className="relative z-[1]">
+    <div className={shellClassName}>
+      <div className="relative z-[1]">
         <Space direction="vertical" size={16} style={{ display: 'flex' }}>
           <Card className={`internal-panel ${accentSurfaceClassName}`} style={pageCardStyle}>
             <Space direction="vertical" size={14} style={{ width: '100%', alignItems: 'stretch' }}>
@@ -434,7 +432,7 @@ export default function ConversationHome() {
             )}
           </Card>
         </Space>
-      </Content>
+      </div>
       {navigationTarget ? (
         <div
           className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(255,255,255,0.68)] px-4 backdrop-blur-sm"
@@ -481,6 +479,6 @@ export default function ConversationHome() {
           {renameError ? <div style={{ color: 'rgb(var(--danger-6))', fontSize: 12 }}>{renameError}</div> : null}
         </Space>
       </Modal>
-    </Layout>
+    </div>
   );
 }

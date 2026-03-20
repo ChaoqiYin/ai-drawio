@@ -1,16 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod cli_schema;
 mod cli_path_install;
+mod cli_schema;
 mod control_protocol;
 mod control_server;
 mod document_bridge;
 mod packaged_cli;
 mod session_runtime;
+mod tray_settings;
 mod webview_api;
 
-use tauri::Manager;
 use serde_json::Value;
+use tauri::Manager;
 use webview_api::{
     eval_main_window_script, invoke_main_window_method, CallRequest, EvalRequest,
     ScriptResultBridgeState,
@@ -37,9 +38,11 @@ fn report_bridge_result(
 
 #[tauri::command]
 fn app_ready(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(main_window) = app.get_webview_window("main") {
-        main_window.show().map_err(|error| error.to_string())?;
-        main_window.set_focus().map_err(|error| error.to_string())?;
+    if tray_settings::should_show_main_window_on_app_ready(&app) {
+        if let Some(main_window) = app.get_webview_window("main") {
+            main_window.show().map_err(|error| error.to_string())?;
+            main_window.set_focus().map_err(|error| error.to_string())?;
+        }
     }
 
     if let Some(splash_window) = app.get_webview_window("splash") {
@@ -57,18 +60,23 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_cli::init())
         .manage(ScriptResultBridgeState::default())
+        .manage(tray_settings::TrayRuntimeState::default())
         .setup(|app| {
             control_server::start_control_server(app.handle().clone())?;
+            tray_settings::setup_tray(&app.handle())?;
+            tray_settings::register_close_interceptor(&app.handle());
 
             if let Some(main_window) = app.get_webview_window("main") {
                 main_window.hide().map_err(|error| error.to_string())?;
             }
 
-            if let Some(splash_window) = app.get_webview_window("splash") {
-                splash_window.show().map_err(|error| error.to_string())?;
-                splash_window
-                    .set_focus()
-                    .map_err(|error| error.to_string())?;
+            if tray_settings::should_show_main_window_on_app_ready(&app.handle()) {
+                if let Some(splash_window) = app.get_webview_window("splash") {
+                    splash_window.show().map_err(|error| error.to_string())?;
+                    splash_window
+                        .set_focus()
+                        .map_err(|error| error.to_string())?;
+                }
             }
 
             Ok(())
@@ -77,6 +85,8 @@ fn main() {
             app_ready,
             cli_path_install::get_cli_install_status,
             cli_path_install::install_cli_to_path,
+            tray_settings::get_tray_settings,
+            tray_settings::set_tray_enabled,
             call_page_method,
             eval_page_script,
             report_bridge_result

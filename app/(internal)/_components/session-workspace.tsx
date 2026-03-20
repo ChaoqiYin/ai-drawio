@@ -8,7 +8,6 @@ import {
   Button,
   Card,
   Empty,
-  Layout,
   Modal,
   Space,
   Tabs,
@@ -46,9 +45,9 @@ const DRAWIO_EMBED_PATH = '/drawio/index.html?embed=1&proto=json&spin=1&noSaveBt
 const FALLBACK_EMPTY_DIAGRAM_XML =
   '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel>';
 
-const shellClassName = 'internal-app-shell h-screen overflow-hidden';
-const pageShellClassName = 'flex flex-col h-full min-h-full p-[18px] lg:p-[22px]';
-const shellBodyClassName = 'min-h-0 flex flex-1 gap-4 bg-transparent!';
+const shellClassName = 'internal-app-shell flex min-h-0 min-w-0 flex-1 overflow-hidden';
+const pageShellClassName = 'flex min-h-0 min-w-0 flex-1 flex-col';
+const shellBodyClassName = 'min-h-0 min-w-0 flex flex-1 overflow-hidden gap-4 bg-transparent!';
 const sidebarClassName = 'h-full overflow-hidden bg-transparent!';
 const workspaceClassName = 'min-h-0 flex min-w-0 flex-1 flex-col gap-4 lg:gap-[18px] bg-transparent!';
 const toolbarSurfaceClassName = 'bg-transparent';
@@ -59,7 +58,6 @@ const toolbarCardStyle = {
   borderRadius: 8,
   backdropFilter: 'blur(18px)',
 } as const;
-const { Content, Sider } = Layout;
 const { Paragraph, Text } = Typography;
 
 type PendingRequest = {
@@ -1477,10 +1475,10 @@ export default function SessionWorkspace({
   }
 
   return (
-    <Layout className={shellClassName}>
+    <div className={shellClassName}>
       <div className={pageShellClassName}>
-        <Layout hasSider className={shellBodyClassName} data-layout="workspace-body">
-          <Sider width={320} theme="light" trigger={null} className={sidebarClassName} data-layout="workspace-sidebar">
+        <div className={shellBodyClassName} data-layout="workspace-body">
+          <div className={`${sidebarClassName} w-[320px] shrink-0`} data-layout="workspace-sidebar">
             <Card
               className={`internal-panel overflow-hidden ${sidebarSurfaceClassName}`}
               title="会话记录"
@@ -1562,13 +1560,9 @@ export default function SessionWorkspace({
                 )}
               </div>
             </Card>
-          </Sider>
+          </div>
 
-          <Content
-            className={workspaceClassName}
-            style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}
-            data-layout="workspace-main"
-          >
+          <div className={workspaceClassName} data-layout="workspace-main">
             <div className={workspaceCanvasClassName} data-layout="workspace-main-canvas">
               {conversation ? (
                 <iframe
@@ -1587,10 +1581,10 @@ export default function SessionWorkspace({
                 <div className="flex min-h-full w-full items-center justify-center">
                   <Empty description="正在校验本地会话记录..." />
                 </div>
-              )}
-            </div>
-          </Content>
-        </Layout>
+                )}
+              </div>
+          </div>
+        </div>
       </div>
       <Modal
         title="预览后恢复"
@@ -1640,6 +1634,6 @@ export default function SessionWorkspace({
           </div>
         </Space>
       </Modal>
-    </Layout>
+    </div>
   );
 }

@@ -12,9 +12,15 @@ test("tauri startup defines a splash loading lifecycle", async () => {
   ]);
 
   assert.match(tauriConfig, /"label"\s*:\s*"splash"/);
+  assert.match(tauriConfig, /"label"\s*:\s*"splash"[\s\S]*"visible"\s*:\s*false/);
   assert.match(mainSource, /fn app_ready/);
+  assert.match(mainSource, /should_show_main_window_on_app_ready/);
   assert.match(mainSource, /get_webview_window\("main"\)/);
   assert.match(mainSource, /get_webview_window\("splash"\)/);
-  assert.match(mainSource, /\.show\(\)/);
+  assert.match(mainSource, /if tray_settings::should_show_main_window_on_app_ready\(&app\)/);
+  assert.match(
+    mainSource,
+    /if tray_settings::should_show_main_window_on_app_ready\(&app\.handle\(\)\) \{[\s\S]*splash_window\.show\(\)/
+  );
   assert.match(mainSource, /\.close\(\)/);
 });

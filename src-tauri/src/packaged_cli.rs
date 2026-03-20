@@ -26,7 +26,9 @@ pub enum PackagedCliCommand {
     Status,
     ConversationCreate,
     SessionList,
-    SessionOpen { locator: SessionLocator },
+    SessionOpen {
+        locator: SessionLocator,
+    },
     CanvasDocumentGet {
         locator: Option<SessionLocator>,
         output_file: Option<String>,
@@ -64,30 +66,37 @@ pub fn maybe_run_from_env() -> Option<i32> {
         return None;
     }
 
-    let exit_code = match parse_cli_args_from_strings(&args).and_then(|command| execute_cli(&command))
-    {
-        Ok(response) => {
-            print_json_response(&response);
-            if response.ok { 0 } else { 1 }
-        }
-        Err(message) => {
-            print_json_value(&json!({
-                "ok": false,
-                "error": {
-                    "code": "CLI_ERROR",
-                    "message": message
+    let exit_code =
+        match parse_cli_args_from_strings(&args).and_then(|command| execute_cli(&command)) {
+            Ok(response) => {
+                print_json_response(&response);
+                if response.ok {
+                    0
+                } else {
+                    1
                 }
-            }));
-            1
-        }
-    };
+            }
+            Err(message) => {
+                print_json_value(&json!({
+                    "ok": false,
+                    "error": {
+                        "code": "CLI_ERROR",
+                        "message": message
+                    }
+                }));
+                1
+            }
+        };
 
     Some(exit_code)
 }
 
 #[cfg(test)]
 pub fn parse_cli_args(args: &[&str]) -> Result<PackagedCliCommand, String> {
-    let owned_args = args.iter().map(|value| (*value).to_string()).collect::<Vec<_>>();
+    let owned_args = args
+        .iter()
+        .map(|value| (*value).to_string())
+        .collect::<Vec<_>>();
     parse_cli_args_from_strings(&owned_args)
 }
 
@@ -196,12 +205,9 @@ pub fn build_request_for_command(
     session_id: Option<String>,
 ) -> Result<ControlRequest, String> {
     match command {
-        PackagedCliCommand::Status => Ok(build_request(
-            "status",
-            None,
-            json!({}),
-            STATUS_TIMEOUT_MS,
-        )),
+        PackagedCliCommand::Status => {
+            Ok(build_request("status", None, json!({}), STATUS_TIMEOUT_MS))
+        }
         PackagedCliCommand::ConversationCreate => Ok(build_request(
             "conversation.create",
             None,
@@ -491,8 +497,9 @@ fn maybe_write_output_file(
         .and_then(|value| value.get("pages"))
         .and_then(Value::as_array)
     {
-        fs::create_dir_all(output_file)
-            .map_err(|error| format!("failed to create output directory '{output_file}': {error}"))?;
+        fs::create_dir_all(output_file).map_err(|error| {
+            format!("failed to create output directory '{output_file}': {error}")
+        })?;
 
         let mut updated_pages = Vec::with_capacity(pages.len());
 
@@ -502,10 +509,7 @@ fn maybe_write_output_file(
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .trim();
-            let svg = page
-                .get("svg")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
+            let svg = page.get("svg").and_then(Value::as_str).unwrap_or_default();
 
             if svg.is_empty() {
                 continue;
@@ -580,8 +584,9 @@ fn maybe_write_preview_pages(
         (0..pages.len()).collect::<Vec<_>>()
     };
 
-    fs::create_dir_all(output_directory)
-        .map_err(|error| format!("failed to create output directory '{output_directory}': {error}"))?;
+    fs::create_dir_all(output_directory).map_err(|error| {
+        format!("failed to create output directory '{output_directory}': {error}")
+    })?;
 
     let mut updated_pages = Vec::with_capacity(selected_indexes.len());
 
@@ -641,8 +646,7 @@ fn maybe_write_preview_pages(
 }
 
 fn sanitize_svg_page_name(name: &str) -> String {
-    name
-        .trim()
+    name.trim()
         .replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], "-")
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -901,7 +905,7 @@ mod tests {
             "--xml-file",
             "./next.drawio",
         ])
-            .expect("document apply with xml file should parse");
+        .expect("document apply with xml file should parse");
 
         assert_eq!(
             command,
@@ -919,13 +923,9 @@ mod tests {
 
     #[test]
     fn parses_document_apply_with_stdin_mode() {
-        let command = parse_cli_args(&[
-            "canvas",
-            "document.apply",
-            "apply stdin xml",
-            "--xml-stdin",
-        ])
-            .expect("stdin mode should parse");
+        let command =
+            parse_cli_args(&["canvas", "document.apply", "apply stdin xml", "--xml-stdin"])
+                .expect("stdin mode should parse");
 
         assert_eq!(
             command,
@@ -1008,14 +1008,8 @@ mod tests {
 
     #[test]
     fn parses_document_preview_with_selected_page() {
-        let command = parse_cli_args(&[
-            "canvas",
-            "document.preview",
-            "./previews",
-            "--page",
-            "2",
-        ])
-        .expect("document preview with page should parse");
+        let command = parse_cli_args(&["canvas", "document.preview", "./previews", "--page", "2"])
+            .expect("document preview with page should parse");
 
         assert_eq!(
             command,
@@ -1040,14 +1034,8 @@ mod tests {
 
     #[test]
     fn rejects_document_preview_with_zero_page() {
-        let error = parse_cli_args(&[
-            "canvas",
-            "document.preview",
-            "./previews",
-            "--page",
-            "0",
-        ])
-        .expect_err("document preview should reject page zero");
+        let error = parse_cli_args(&["canvas", "document.preview", "./previews", "--page", "0"])
+            .expect_err("document preview should reject page zero");
 
         assert!(
             error.contains("page") || error.contains("0"),
@@ -1138,7 +1126,10 @@ mod tests {
 
         assert_eq!(request.command, "canvas.document.restore");
         assert_eq!(request.session_id, Some("sess-restore".to_string()));
-        assert_eq!(request.payload.get("baseVersion"), Some(&json!("sha256:restore")));
+        assert_eq!(
+            request.payload.get("baseVersion"),
+            Some(&json!("sha256:restore"))
+        );
         assert!(request.payload.get("xml").is_some());
 
         let _ = fs::remove_file(restore_file);
@@ -1214,7 +1205,8 @@ mod tests {
         .expect("svg pages should be written");
 
         let output_path = response.data.as_ref().and_then(|value| {
-            value.get("pages")
+            value
+                .get("pages")
                 .and_then(|pages| pages.get(0))
                 .and_then(|page| page.get("outputPath"))
                 .and_then(|path| path.as_str())
@@ -1264,7 +1256,8 @@ mod tests {
         .expect("preview pages should be written");
 
         let output_path = response.data.as_ref().and_then(|value| {
-            value.get("pages")
+            value
+                .get("pages")
                 .and_then(|pages| pages.get(0))
                 .and_then(|page| page.get("path"))
                 .and_then(|path| path.as_str())
@@ -1399,11 +1392,23 @@ mod tests {
         assert_eq!(response.command, "status");
         assert!(response.ok);
         assert_eq!(
-            response.data.as_ref().and_then(|value| value.get("running")),
+            response
+                .data
+                .as_ref()
+                .and_then(|value| value.get("running")),
             Some(&json!(false))
         );
-        assert_eq!(response.data.as_ref().and_then(|value| value.get("shell")), Some(&json!(null)));
-        assert_eq!(response.data.as_ref().and_then(|value| value.get("manualLaunchRequired")), None);
+        assert_eq!(
+            response.data.as_ref().and_then(|value| value.get("shell")),
+            Some(&json!(null))
+        );
+        assert_eq!(
+            response
+                .data
+                .as_ref()
+                .and_then(|value| value.get("manualLaunchRequired")),
+            None
+        );
     }
 
     #[test]
@@ -1420,8 +1425,20 @@ mod tests {
             response.error.as_ref().map(|error| error.message.as_str()),
             Some("AI Drawio is not running.")
         );
-        assert_eq!(response.data.as_ref().and_then(|value| value.get("manualLaunchRequired")), None);
-        assert_eq!(response.data.as_ref().and_then(|value| value.get("message")), None);
+        assert_eq!(
+            response
+                .data
+                .as_ref()
+                .and_then(|value| value.get("manualLaunchRequired")),
+            None
+        );
+        assert_eq!(
+            response
+                .data
+                .as_ref()
+                .and_then(|value| value.get("message")),
+            None
+        );
     }
 
     #[test]

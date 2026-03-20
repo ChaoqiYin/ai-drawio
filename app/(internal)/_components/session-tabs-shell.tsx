@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Input, Layout, Modal, Space, Tabs, Tag, Typography } from '@arco-design/web-react';
+import { Button, Input, Modal, Space, Tabs, Typography } from '@arco-design/web-react';
 import { IconClose, IconEdit } from '@arco-design/web-react/icon';
 
 import { getConversationById, updateConversationTitle } from '../_lib/conversation-store';
@@ -14,8 +14,7 @@ import { InternalTopNavigation } from './internal-top-navigation';
 import SessionWorkspaceHost from './session-workspace-host';
 
 const shellClassName =
-  'internal-app-shell mx-auto flex min-h-screen w-full max-w-[1480px] flex-col px-3! py-3! md:px-5! md:py-5!';
-const { Content } = Layout;
+  'internal-app-shell mx-auto flex h-screen min-h-0 min-w-0 w-full flex-col overflow-hidden px-3! py-3! md:px-5! md:py-5!';
 const { Text } = Typography;
 
 function buildSessionSummary(
@@ -145,49 +144,59 @@ export default function SessionTabsShell() {
     const isActive = session.id === activeSessionId;
 
     return (
-      <Space size={6}>
-        <Text>{session.title}</Text>
-        {isActive ? (
-          <>
-            <Tag color={session.isReady ? 'green' : 'gold'}>
-              {session.isReady ? 'draw.io 已就绪' : '正在加载 draw.io'}
-            </Tag>
+      <div className="internal-session-tab-title flex min-w-0 items-center gap-2" data-layout="session-tab-title">
+        <span
+          aria-label={session.isReady ? '状态已就绪' : '状态加载中'}
+          className="h-[10px] w-[10px] shrink-0 rounded-full"
+          data-layout="session-tab-status-lamp"
+          role="status"
+          style={{
+            backgroundColor: session.isReady ? 'rgb(var(--success-6))' : 'rgb(var(--warning-6))',
+            boxShadow: session.isReady
+              ? '0 0 0 4px rgba(34, 197, 94, 0.16)'
+              : '0 0 0 4px rgba(245, 158, 11, 0.18)',
+          }}
+        />
+        <Text className="session-tab-title-text min-w-0 flex-1 truncate">{session.title}</Text>
+        <div
+          className="session-tab-actions ml-auto flex items-center gap-1 border-l border-[rgba(148,163,184,0.26)] pl-1.5"
+          data-layout="session-tab-actions"
+        >
+          {isActive ? (
             <Button
+              aria-label={`重命名 ${session.title}`}
+              data-layout="session-tab-rename"
               icon={<IconEdit />}
               onClick={(event) => {
                 event.stopPropagation();
                 openRenameDialog(session);
               }}
+              shape="circle"
               size="mini"
               type="text"
-            >
-              重命名
-            </Button>
-          </>
-        ) : (
-          <Tag color={session.isReady ? 'green' : 'gold'}>
-            {session.isReady ? '就绪' : '加载中'}
-          </Tag>
-        )}
-        <Button
-          aria-label={`关闭 ${session.title}`}
-          icon={<IconClose />}
-          onClick={(event) => {
-            event.stopPropagation();
-            closeSession(session.id);
-          }}
-          shape="circle"
-          size="mini"
-          type="text"
-        />
-      </Space>
+            />
+          ) : null}
+          <Button
+            aria-label={`关闭 ${session.title}`}
+            data-layout="session-tab-close"
+            icon={<IconClose />}
+            onClick={(event) => {
+              event.stopPropagation();
+              closeSession(session.id);
+            }}
+            shape="circle"
+            size="mini"
+            type="text"
+          />
+        </div>
+      </div>
     );
   }
 
   return (
-    <Layout className={shellClassName}>
-      <Content className="relative z-[1]">
-        <Space direction="vertical" size={16} style={{ display: 'flex' }}>
+    <div className={shellClassName}>
+      <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+        <div className="flex flex-col gap-3" data-layout="session-shell-header">
           <InternalTopNavigation
             onBack={handleBackToHome}
             content={
@@ -201,23 +210,27 @@ export default function SessionTabsShell() {
             }
           />
           {openedSessions.length > 0 ? (
-            <Tabs activeTab={activeSessionId} onChange={activateSession} type="rounded">
-              {openedSessions.map((session) => (
-                <Tabs.TabPane key={session.id} title={renderSessionTabTitle(session)} />
-              ))}
-            </Tabs>
+            <div className="min-w-0 overflow-x-auto" data-layout="session-shell-tabs">
+              <div className="min-w-max px-1 py-0" data-layout="session-shell-tabs-inner">
+                <Tabs activeTab={activeSessionId} className="internal-session-tabs" onChange={activateSession} type="rounded">
+                  {openedSessions.map((session) => (
+                    <Tabs.TabPane key={session.id} title={renderSessionTabTitle(session)} />
+                  ))}
+                </Tabs>
+              </div>
+            </div>
           ) : null}
-          <div className="relative min-h-0 flex flex-1 flex-col gap-4">
-            {openedSessions.map((session) => (
-              <SessionWorkspaceHost
-                key={session.id}
-                hidden={session.id !== activeSessionId}
-                sessionId={session.id}
-              />
-            ))}
-          </div>
-        </Space>
-      </Content>
+        </div>
+        <div className="relative min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden" data-layout="session-shell-body">
+          {openedSessions.map((session) => (
+            <SessionWorkspaceHost
+              key={session.id}
+              hidden={session.id !== activeSessionId}
+              sessionId={session.id}
+            />
+          ))}
+        </div>
+      </div>
       <Modal
         title="重命名会话"
         visible={renameDialogOpen}
@@ -243,6 +256,6 @@ export default function SessionTabsShell() {
           {renameError ? <div style={{ color: 'rgb(var(--danger-6))', fontSize: 12 }}>{renameError}</div> : null}
         </Space>
       </Modal>
-    </Layout>
+    </div>
   );
 }

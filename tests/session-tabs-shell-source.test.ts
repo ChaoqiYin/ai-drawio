@@ -38,9 +38,13 @@ test("session route shell renders the detail shell without query-parameter coupl
   assert.doesNotMatch(source, /initialSessionId/);
 });
 
-test("session tabs shell reads opened sessions from the detail store and renders top nav before tabs", async () => {
+test("session tabs shell uses a fixed header plus a flex detail body", async () => {
   const source = await readFile(SHELL_SOURCE_PATH, "utf8");
 
+  assert.match(
+    source,
+    /const shellClassName =\s*'internal-app-shell mx-auto flex h-screen min-h-0 min-w-0 w-full flex-col overflow-hidden px-3! py-3! md:px-5! md:py-5!';/
+  );
   assert.match(source, /useWorkspaceSessionStore/);
   assert.match(source, /openedSessions/);
   assert.match(source, /activeSessionId/);
@@ -48,10 +52,23 @@ test("session tabs shell reads opened sessions from the detail store and renders
   assert.match(source, /router\.push\("\/"\)/);
   assert.match(source, /InternalTopNavigation/);
   assert.match(source, /InternalBreadcrumb/);
-  assert.match(source, /<InternalTopNavigation[\s\S]*<Tabs/);
+  assert.match(source, /<div className="relative z-\[1\] flex min-h-0 min-w-0 flex-1 flex-col gap-3">/);
+  assert.match(source, /<div className="flex flex-col gap-3" data-layout="session-shell-header">/);
+  assert.match(source, /data-layout="session-shell-header"/);
+  assert.match(source, /data-layout="session-shell-tabs"/);
+  assert.match(source, /data-layout="session-shell-tabs-inner"/);
+  assert.match(source, /data-layout="session-shell-body"/);
+  assert.match(source, /className="min-w-0 overflow-x-auto" data-layout="session-shell-tabs"/);
+  assert.match(source, /className="min-w-max px-1 py-0" data-layout="session-shell-tabs-inner"/);
+  assert.match(source, /<Tabs activeTab=\{activeSessionId\} className="internal-session-tabs" onChange=\{activateSession\} type="rounded">/);
+  assert.match(source, /<InternalTopNavigation[\s\S]*data-layout="session-shell-tabs"/);
+  assert.match(source, /data-layout="session-tab-title"/);
+  assert.match(source, /className="relative min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden" data-layout="session-shell-body"/);
   assert.match(source, /SessionWorkspaceHost/);
   assert.match(source, /openedSessions\.map\(\(session\) =>/);
   assert.match(source, /hidden=\{session\.id !== activeSessionId\}/);
+  assert.doesNotMatch(source, /<Layout/);
+  assert.doesNotMatch(source, /<Content/);
   assert.doesNotMatch(source, /const \[openedSessionIds, setOpenedSessionIds\] = useState<string\[\]>/);
   assert.doesNotMatch(source, /const \[activeSessionId, setActiveSessionId\] = useState/);
   assert.doesNotMatch(source, /ConversationHome/);
