@@ -31,7 +31,7 @@ import { consumeHomeRedirectError } from '../_lib/conversation-route-state';
 import { useWorkspaceSessionStore } from '../_lib/workspace-session-store';
 
 const shellClassName =
-  'internal-app-shell mx-auto flex min-h-screen w-full flex-col px-3! py-3! md:px-5! md:py-5!';
+  'internal-app-shell mx-auto flex h-screen min-h-screen w-full flex-col overflow-hidden px-3! py-3! md:px-5! md:py-5!';
 const accentSurfaceClassName = 'bg-transparent';
 const softSurfaceClassName = 'bg-transparent';
 const overlaySurfaceClassName = 'bg-white/95';
@@ -294,16 +294,54 @@ export default function ConversationHome() {
           className="flex! h-10! w-10! items-center! justify-center! rounded-full border-0 bg-[rgb(15,23,42)]! p-0! shadow-[0_14px_28px_rgba(15,23,42,0.22)]"
         ></Button>
       </div>
-      <div className="relative z-[1]">
-        <Space direction="vertical" size={16} style={{ display: 'flex' }}>
-          <Card className={`internal-panel ${accentSurfaceClassName}`} style={pageCardStyle}>
-            <Space direction="vertical" size={14} style={{ width: '100%', alignItems: 'stretch' }}>
-              <Space size={10} align="center" wrap>
-                <Tag color="green">{isLoading ? '正在加载本地历史' : `共 ${totalCount} 条会话`}</Tag>
-              </Space>
-              <Title heading={3} style={{ margin: 0 }}>
-                选择历史会话开启工作区
-              </Title>
+      <div className="relative z-[1] flex flex-1 min-h-0 gap-4" data-layout="home-main-columns">
+        <Card
+          className={`internal-panel ${accentSurfaceClassName} w-[340px] shrink-0`}
+          style={pageCardStyle}
+          bodyStyle={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 18 }}
+          data-layout="home-left-panel"
+        >
+          <div className="flex h-full flex-col gap-4">
+            <Space size={10} align="center" wrap>
+              <Tag color="green">{isLoading ? '正在加载本地历史' : `共 ${totalCount} 条会话`}</Tag>
+            </Space>
+            <Title heading={3} style={{ margin: 0 }}>
+              选择历史会话开启工作区
+            </Title>
+            <Space direction="vertical" size={10} style={{ width: '100%', alignItems: 'stretch' }}>
+              <Button
+                type="primary"
+                icon={<IconPlus />}
+                loading={isCreatingConversation || isPending}
+                disabled={isNavigating || isClearingAll}
+                onClick={handleCreateConversation}
+              >
+                {isCreatingConversation || isPending ? '正在打开...' : '创建本地会话'}
+              </Button>
+              <Popconfirm
+                title="确认清空全部本地数据吗？"
+                content="会删除当前域名下全部 IndexedDB 记录。"
+                okButtonProps={{ status: 'danger', loading: isClearingAll }}
+                okText={isClearingAll ? '正在清空...' : '确认清空'}
+                onOk={handleClearAllData}
+              >
+                <Button status="danger" icon={<IconPoweroff />} disabled={isClearingAll || isNavigating}>
+                  清空全部本地数据
+                </Button>
+              </Popconfirm>
+            </Space>
+            {error ? <Alert type="error" content={error} showIcon /> : null}
+          </div>
+        </Card>
+
+        <Card
+          className={`internal-panel ${softSurfaceClassName} flex-1 min-w-0 min-h-0`}
+          style={pageCardStyle}
+          bodyStyle={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, padding: 18 }}
+          data-layout="home-right-panel"
+        >
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="flex flex-col gap-3" data-layout="home-list-controls">
               <Input
                 allowClear
                 value={searchQuery}
@@ -314,101 +352,7 @@ export default function ConversationHome() {
                   setCurrentPage(1);
                 }}
               />
-              <Space wrap>
-                <Button
-                  type="primary"
-                  icon={<IconPlus />}
-                  loading={isCreatingConversation || isPending}
-                  disabled={isNavigating || isClearingAll}
-                  onClick={handleCreateConversation}
-                >
-                  {isCreatingConversation || isPending ? '正在打开...' : '创建本地会话'}
-                </Button>
-                <Popconfirm
-                  title="确认清空全部本地数据吗？"
-                  content="会删除当前域名下全部 IndexedDB 记录。"
-                  okButtonProps={{ status: 'danger', loading: isClearingAll }}
-                  okText={isClearingAll ? '正在清空...' : '确认清空'}
-                  onOk={handleClearAllData}
-                >
-                  <Button status="danger" icon={<IconPoweroff />} disabled={isClearingAll || isNavigating}>
-                    清空全部本地数据
-                  </Button>
-                </Popconfirm>
-              </Space>
-              {error ? <Alert type="error" content={error} showIcon /> : null}
-            </Space>
-          </Card>
-
-          <Card className={`internal-panel ${softSurfaceClassName}`} style={pageCardStyle}>
-            {items.length === 0 && !isLoading ? (
-              <Empty description="还没有本地会话，先创建第一条记录，再进入图形工作区。" style={{ paddingBlock: 32 }} />
-            ) : (
-              <Space direction="vertical" size={14} style={{ display: 'flex' }}>
-                {items.map((item) => (
-                  <Card
-                    className="internal-page-list-card"
-                    hoverable={!isNavigating}
-                    key={item.id}
-                    style={listCardStyle}
-                    bodyStyle={{ padding: 18 }}
-                    title={
-                      <Title heading={6} style={{ margin: 0 }}>
-                        {item.title}
-                      </Title>
-                    }
-                    extra={
-                      <Space size={8}>
-                        <Button
-                          size="mini"
-                          icon={<IconEdit />}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openRenameDialog(item);
-                          }}
-                          disabled={isClearingAll || isNavigating || deletingId === item.id}
-                        >
-                          重命名
-                        </Button>
-                        <Popconfirm
-                          title="确认删除这条本地绘画记录吗？"
-                          okButtonProps={{
-                            status: 'danger',
-                            loading: deletingId === item.id,
-                          }}
-                          okText={deletingId === item.id ? '删除中...' : '确认删除'}
-                          onOk={() => {
-                            suppressNavigationForDelete();
-                            return handleDeleteConversation(item.id);
-                          }}
-                        >
-                          <Button
-                            size="mini"
-                            status="danger"
-                            icon={<IconDelete />}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              suppressNavigationForDelete();
-                            }}
-                            disabled={isClearingAll || isNavigating || deletingId === item.id}
-                          >
-                            删除
-                          </Button>
-                        </Popconfirm>
-                      </Space>
-                    }
-                    onClick={() => openConversation(item)}
-                  >
-                    <Space direction="vertical" size={8} style={{ width: '100%', alignItems: 'stretch' }}>
-                      <Text style={{ color: 'var(--color-text-4)', fontSize: 12, fontWeight: 400 }}>
-                        {formatDate(item.updatedAt)}
-                      </Text>
-                      <Paragraph type="secondary" ellipsis={{ rows: 2, cssEllipsis: true }} style={{ marginBottom: 0 }}>
-                        {item.preview}
-                      </Paragraph>
-                    </Space>
-                  </Card>
-                ))}
+              <div data-layout="home-list-pagination">
                 {totalCount > PAGE_SIZE ? (
                   <Pagination
                     current={currentPage}
@@ -419,10 +363,83 @@ export default function ConversationHome() {
                     onChange={(page) => setCurrentPage(page)}
                   />
                 ) : null}
-              </Space>
-            )}
-          </Card>
-        </Space>
+              </div>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto pt-3" data-layout="home-list-viewport">
+              {items.length === 0 && !isLoading ? (
+                <Empty description="还没有本地会话，先创建第一条记录，再进入图形工作区。" style={{ paddingBlock: 32 }} />
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {items.map((item) => (
+                    <Card
+                      className="internal-page-list-card"
+                      hoverable={!isNavigating}
+                      key={item.id}
+                      style={listCardStyle}
+                      bodyStyle={{ padding: 18 }}
+                      title={
+                        <Title heading={6} style={{ margin: 0 }}>
+                          {item.title}
+                        </Title>
+                      }
+                      extra={
+                        <Space size={8}>
+                          <Button
+                            size="mini"
+                            icon={<IconEdit />}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openRenameDialog(item);
+                            }}
+                            disabled={isClearingAll || isNavigating || deletingId === item.id}
+                          >
+                            重命名
+                          </Button>
+                          <Popconfirm
+                            title="确认删除这条本地绘画记录吗？"
+                            okButtonProps={{
+                              status: 'danger',
+                              loading: deletingId === item.id,
+                            }}
+                            okText={deletingId === item.id ? '删除中...' : '确认删除'}
+                            onOk={() => {
+                              suppressNavigationForDelete();
+                              return handleDeleteConversation(item.id);
+                            }}
+                          >
+                            <Button
+                              size="mini"
+                              status="danger"
+                              icon={<IconDelete />}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                suppressNavigationForDelete();
+                              }}
+                              disabled={isClearingAll || isNavigating || deletingId === item.id}
+                            >
+                              删除
+                            </Button>
+                          </Popconfirm>
+                        </Space>
+                      }
+                      onClick={() => openConversation(item)}
+                    >
+                      <Space direction="vertical" size={8} style={{ width: '100%', alignItems: 'stretch' }}>
+                        <Text style={{ color: 'var(--color-text-4)', fontSize: 12, fontWeight: 400 }}>
+                          {formatDate(item.updatedAt)}
+                        </Text>
+                        <Paragraph type="secondary" ellipsis={{ rows: 2, cssEllipsis: true }} style={{ marginBottom: 0 }}>
+                          {item.preview}
+                        </Paragraph>
+                      </Space>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
       </div>
       {navigationTarget ? (
         <div

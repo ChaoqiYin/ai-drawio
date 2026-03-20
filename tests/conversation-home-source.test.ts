@@ -50,7 +50,16 @@ test("conversation home source includes delete actions", async () => {
   assert.match(source, /internal-app-shell/);
   assert.match(source, /px-3! py-3! md:px-5! md:py-5!/);
   assert.match(source, /<div className=\{shellClassName\}>/);
-  assert.match(source, /<div className="relative z-\[1\]">/);
+  assert.match(source, /data-layout="home-main-columns"/);
+  assert.match(source, /className="relative z-\[1\] flex flex-1 min-h-0 gap-4"/);
+  assert.match(source, /data-layout="home-left-panel"/);
+  assert.match(source, /w-\[340px\] shrink-0/);
+  assert.match(source, /data-layout="home-right-panel"/);
+  assert.match(source, /flex-1 min-w-0 min-h-0/);
+  assert.match(source, /data-layout="home-list-controls"/);
+  assert.match(source, /data-layout="home-list-pagination"/);
+  assert.match(source, /data-layout="home-list-viewport"/);
+  assert.match(source, /overflow-y-auto/);
   assert.match(source, /internal-page-list-card/);
   assert.match(source, /按标题搜索会话/);
   assert.match(source, /<Pagination/);
@@ -117,6 +126,7 @@ test("conversation home source includes delete actions", async () => {
   assert.doesNotMatch(source, /internal-page-hero-card/);
   assert.doesNotMatch(source, /internal-page-section-card/);
   assert.doesNotMatch(source, /internal-page-overlay-card/);
+  assert.doesNotMatch(source, /<Space direction="vertical" size=\{16\} style=\{\{ display: 'flex' \}\}>/);
   assert.doesNotMatch(source, /window\.confirm/);
   assert.doesNotMatch(source, /router\.push\(buildSessionHref\(conversationId\)\)/);
   assert.doesNotMatch(source, /listConversations\(/);
