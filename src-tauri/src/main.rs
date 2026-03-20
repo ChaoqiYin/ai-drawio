@@ -1,6 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod cli_path_install;
 mod cli_schema;
 mod control_protocol;
 mod control_server;
@@ -58,7 +57,6 @@ fn main() {
     }
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_cli::init())
         .manage(ScriptResultBridgeState::default())
         .manage(tray_settings::TrayRuntimeState::default())
         .setup(|app| {
@@ -83,8 +81,6 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             app_ready,
-            cli_path_install::get_cli_install_status,
-            cli_path_install::install_cli_to_path,
             tray_settings::get_tray_settings,
             tray_settings::set_tray_enabled,
             call_page_method,

@@ -39,17 +39,11 @@ The desktop app starts on a local AI conversation history page and opens draw.io
 ## CLI Behavior
 
 - The packaged macOS binary is named `ai-drawio`.
-- The DMG install flow is drag-and-drop first, then explicit in-app registration from Settings.
-- Use `Install ai-drawio into PATH` from the Settings page to register `/usr/local/bin/ai-drawio`.
+- The DMG install flow is drag-and-drop installation of `AI Drawio.app`.
 - When invoked from a terminal with a CLI command, the binary behaves like a helper:
   - `ai-drawio open` can launch the desktop app directly
   - other commands connect to an already running desktop instance when possible
   - otherwise non-open commands return a structured response telling the caller to open the desktop window manually
-- Shell completion artifacts are generated into `src-tauri/target/cli-completions/` during Rust/Tauri builds.
-- The in-app PATH installer creates the binary link at `/usr/local/bin/ai-drawio` and installs completions into:
-  - `/usr/local/share/zsh/site-functions/_ai-drawio`
-  - `/usr/local/etc/bash_completion.d/ai-drawio`
-  - `/usr/local/share/fish/vendor_completions.d/ai-drawio.fish`
 
 - `ai-drawio open`
   Launches the desktop app and defaults to tray startup mode.

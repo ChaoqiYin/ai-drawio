@@ -16,10 +16,6 @@ import {
 } from '@arco-design/web-react';
 import { IconDelete, IconEdit, IconPlus, IconPoweroff, IconSettings } from '@arco-design/web-react/icon';
 
-import {
-  getCliInstallStatusColor,
-  getCliInstallStatusLabel,
-} from '../_lib/cli-install-status-presentation';
 import type { ConversationRecord } from '../_lib/conversation-model';
 import { getConversationPreview, sortConversationsByUpdatedAt } from '../_lib/conversation-model';
 import {
@@ -31,7 +27,6 @@ import {
   updateConversationTitle,
 } from '../_lib/conversation-store';
 import { consumeHomeRedirectError } from '../_lib/conversation-route-state';
-import { getCliInstallStatus, type CliInstallStatus } from '../_lib/tauri-cli-install';
 import { useWorkspaceSessionStore } from '../_lib/workspace-session-store';
 
 const shellClassName =
@@ -63,13 +58,6 @@ export default function ConversationHome() {
   const suppressNavigationUntilRef = useRef(0);
   const [isPending, startTransition] = useTransition();
   const [items, setItems] = useState<ConversationRecord[]>([]);
-  const [cliInstallStatus, setCliInstallStatus] = useState<CliInstallStatus>({
-    status: 'not_installed',
-    commandPath: '/usr/local/bin/ai-drawio',
-    targetPath: null,
-    completionInstalled: false,
-  });
-  const [cliStatusError, setCliStatusError] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isClearingAll, setIsClearingAll] = useState(false);
@@ -129,27 +117,7 @@ export default function ConversationHome() {
       });
     }
 
-    async function syncCliInstallStatus() {
-      try {
-        const nextStatus = await getCliInstallStatus();
-
-        if (!cancelled) {
-          setCliInstallStatus(nextStatus);
-          setCliStatusError('');
-        }
-      } catch (nextError) {
-        if (!cancelled) {
-          setCliInstallStatus((currentStatus) => ({
-            ...currentStatus,
-            status: 'error',
-          }));
-          setCliStatusError(nextError instanceof Error ? nextError.message : '读取 CLI 集成状态失败。');
-        }
-      }
-    }
-
     void syncConversations();
-    void syncCliInstallStatus();
     const unsubscribe = subscribeConversationChanges(() => {
       void syncConversations({ keepLoading: true });
     });
@@ -292,41 +260,21 @@ export default function ConversationHome() {
 
   return (
     <div className={shellClassName}>
+      <div className="fixed right-6 bottom-[16vh] z-[12]" data-layout="home-settings-fab">
+        <Button
+          disabled={isNavigating || isClearingAll}
+          icon={<IconSettings style={{ display: 'block', fontSize: 20 }} />}
+          aria-label="打开设置"
+          onClick={openSettings}
+          shape="circle"
+          type="primary"
+          className="flex! h-10! w-10! items-center! justify-center! rounded-full border-0 bg-[rgb(15,23,42)]! p-0! shadow-[0_14px_28px_rgba(15,23,42,0.22)]"
+        ></Button>
+      </div>
       <div className="relative z-[1]">
         <Space direction="vertical" size={16} style={{ display: 'flex' }}>
           <Card className={`internal-panel ${accentSurfaceClassName}`} style={pageCardStyle}>
             <Space direction="vertical" size={14} style={{ width: '100%', alignItems: 'stretch' }}>
-              <div
-                className="flex items-center justify-between gap-4 border-b border-[rgba(148,163,184,0.18)] pb-3"
-                data-layout="home-toolbar"
-              >
-                <div
-                  className="flex min-w-0 items-center gap-3"
-                  data-layout="home-cli-status"
-                  data-status={cliInstallStatus.status}
-                  title={cliStatusError ? cliStatusError : getCliInstallStatusLabel(cliInstallStatus.status)}
-                >
-                  <span
-                    aria-hidden="true"
-                    className="block h-2.5 w-2.5 rounded-full"
-                    style={{
-                      backgroundColor: `rgb(var(--${getCliInstallStatusColor(cliInstallStatus.status)}-6))`,
-                      boxShadow: `0 0 0 4px rgb(var(--${getCliInstallStatusColor(cliInstallStatus.status)}-1))`,
-                    }}
-                  />
-                  <Text style={{ color: 'var(--color-text-3)', fontSize: 12, fontWeight: 500 }}>
-                    {getCliInstallStatusLabel(cliInstallStatus.status)}
-                  </Text>
-                </div>
-                <Button
-                  disabled={isNavigating || isClearingAll}
-                  icon={<IconSettings />}
-                  aria-label="打开设置"
-                  onClick={openSettings}
-                  shape="circle"
-                  type="secondary"
-                ></Button>
-              </div>
               <Space size={10} align="center" wrap>
                 <Tag color="green">{isLoading ? '正在加载本地历史' : `共 ${items.length} 条会话`}</Tag>
               </Space>

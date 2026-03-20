@@ -12,6 +12,7 @@ test("internal top navigation exposes a permanent back button and caller-provide
 
   assert.match(source, /type InternalTopNavigationProps = \{/);
   assert.match(source, /content: ReactNode/);
+  assert.match(source, /actions\?: ReactNode/);
   assert.match(source, /onBack\?: \(\) => void/);
   assert.match(source, /backLabel\?: string/);
   assert.match(source, /const handleBack = \(\): void => \{/);
@@ -22,4 +23,5 @@ test("internal top navigation exposes a permanent back button and caller-provide
   assert.match(source, /backLabel \?\? '返回'/);
   assert.match(source, /data-layout="workspace-top-nav"/);
   assert.match(source, /data-layout="workspace-top-nav-content"/);
+  assert.match(source, /data-layout="workspace-top-nav-actions"/);
 });

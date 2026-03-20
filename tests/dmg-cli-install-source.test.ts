@@ -14,29 +14,27 @@ const INSTALL_SCRIPT_PATH = new URL(
 );
 
 test("tauri exposes dmg cli install commands and bundles install resources", async () => {
-  const [mainSource, cliInstallSource, configSource, buildSource, packageJson, readme, installSource] =
+  const [mainSource, configSource, buildSource, packageJson, readme] =
     await Promise.all([
       readFile(MAIN_SOURCE_PATH, "utf8"),
-      readFile(CLI_INSTALL_SOURCE_PATH, "utf8"),
       readFile(TAURI_CONFIG_PATH, "utf8"),
       readFile(BUILD_SOURCE_PATH, "utf8"),
       readFile(PACKAGE_JSON_PATH, "utf8"),
       readFile(README_PATH, "utf8"),
-      readFile(INSTALL_SCRIPT_PATH, "utf8"),
     ]);
 
-  assert.match(mainSource, /mod cli_path_install;/);
-  assert.match(mainSource, /get_cli_install_status/);
-  assert.match(mainSource, /install_cli_to_path/);
-  assert.match(cliInstallSource, /osascript/);
-  assert.match(cliInstallSource, /\/usr\/local\/bin\/ai-drawio/);
+  await assert.rejects(() => access(CLI_INSTALL_SOURCE_PATH));
+  await assert.rejects(() => access(INSTALL_SCRIPT_PATH));
+  assert.doesNotMatch(mainSource, /mod cli_path_install;/);
+  assert.doesNotMatch(mainSource, /get_cli_install_status/);
+  assert.doesNotMatch(mainSource, /install_cli_to_path/);
   assert.match(configSource, /"targets"\s*:\s*"dmg"|\"targets\"\s*:\s*\[\s*\"dmg\"\s*\]/);
-  assert.match(configSource, /install-cli-to-path\.sh/);
-  assert.match(configSource, /"SharedSupport\/cli-completions\/_ai-drawio"/);
-  assert.match(buildSource, /generate_to/);
+  assert.doesNotMatch(configSource, /install-cli-to-path\.sh/);
+  assert.doesNotMatch(configSource, /"SharedSupport\/cli-completions\/_ai-drawio"/);
+  assert.match(buildSource, /tauri_build::build/);
+  assert.doesNotMatch(buildSource, /generate_to/);
   assert.match(packageJson, /"build"\s*:\s*"[^"]*tauri build"/);
-  assert.match(readme, /Install ai-drawio into PATH/);
-  assert.match(installSource, /\/usr\/local\/bin\/ai-drawio/);
+  assert.doesNotMatch(readme, /Install ai-drawio into PATH/);
 });
 
 test("macOS dmg build route uses the direct tauri bundler command without a wrapper script", async () => {

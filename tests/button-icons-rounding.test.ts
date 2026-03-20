@@ -38,6 +38,7 @@ test("internal pages use rounded buttons and icons for key actions", async () =>
   assert.match(homeSource, /icon=\{<IconPoweroff/);
 
   assert.match(sessionTabsSource, /@arco-design\/web-react\/icon/);
+  assert.match(sessionTabsSource, /icon=\{<IconPlus/);
   assert.match(sessionTabsSource, /icon=\{<IconEdit/);
   assert.match(sessionTabsSource, /icon=\{<IconClose/);
   assert.match(sessionTabsSource, /shape="circle"/);

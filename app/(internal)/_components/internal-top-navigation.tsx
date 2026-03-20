@@ -5,6 +5,7 @@ import { Button, Card } from '@arco-design/web-react';
 import { IconLeft } from '@arco-design/web-react/icon';
 
 type InternalTopNavigationProps = {
+  actions?: ReactNode;
   backLabel?: string;
   content: ReactNode;
   onBack?: () => void;
@@ -16,6 +17,7 @@ const topNavigationCardStyle = {
 } as const;
 
 export function InternalTopNavigation({
+  actions,
   backLabel,
   content,
   onBack,
@@ -45,6 +47,11 @@ export function InternalTopNavigation({
         <div className="min-w-0 flex-1" data-layout="workspace-top-nav-content">
           {content}
         </div>
+        {actions ? (
+          <div className="flex shrink-0 items-center gap-2" data-layout="workspace-top-nav-actions">
+            {actions}
+          </div>
+        ) : null}
       </div>
     </Card>
   );

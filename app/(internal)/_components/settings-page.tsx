@@ -2,18 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Card, Descriptions, Space, Switch, Tag, Typography } from "@arco-design/web-react";
-
-import {
-  getCliInstallStatusColor,
-  getCliInstallStatusLabel,
-} from "../_lib/cli-install-status-presentation";
-import {
-  getCliInstallStatus,
-  installCliToPath,
-  type CliInstallResult,
-  type CliInstallStatus,
-} from "../_lib/tauri-cli-install";
+import { Alert, Card, Space, Switch, Typography } from "@arco-design/web-react";
 import {
   getTraySettings,
   subscribeTrayRuntimeStateChange,
@@ -29,7 +18,7 @@ const pageCardStyle = {
   borderRadius: 8,
   backdropFilter: "blur(18px)",
 } as const;
-const { Paragraph, Title, Text } = Typography;
+const { Title } = Typography;
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -39,18 +28,9 @@ export default function SettingsPage() {
     mainWindowVisible: true,
     closeBehavior: "quit",
   });
-  const [status, setStatus] = useState<CliInstallStatus>({
-    status: "not_installed",
-    commandPath: "/usr/local/bin/ai-drawio",
-    targetPath: null,
-    completionInstalled: false,
-  });
   const [isLoadingTray, setIsLoadingTray] = useState(true);
   const [isTogglingTray, setIsTogglingTray] = useState(false);
-  const [isInstalling, setIsInstalling] = useState(false);
   const [trayError, setTrayError] = useState("");
-  const [cliError, setCliError] = useState("");
-  const [result, setResult] = useState<CliInstallResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,28 +59,6 @@ export default function SettingsPage() {
       }
     }
 
-    async function loadCliStatus() {
-      setCliError("");
-
-      try {
-        const nextStatus = await getCliInstallStatus();
-
-        if (!cancelled) {
-          setStatus(nextStatus);
-        }
-      } catch (nextError) {
-        if (!cancelled) {
-          setStatus((currentStatus) => ({
-            ...currentStatus,
-            status: "error",
-          }));
-          setCliError(nextError instanceof Error ? nextError.message : "读取 CLI 安装状态失败。");
-        }
-      } finally {
-        // no-op
-      }
-    }
-
     const handleWindowFocus = (): void => {
       void loadTrayStatus({ clearError: false });
     };
@@ -112,7 +70,6 @@ export default function SettingsPage() {
     };
 
     void loadTrayStatus();
-    void loadCliStatus();
     window.addEventListener("focus", handleWindowFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     const unsubscribeTrayRuntimeStateChange = subscribeTrayRuntimeStateChange(() => {
@@ -141,28 +98,6 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleInstall(): Promise<void> {
-    setIsInstalling(true);
-    setCliError("");
-    setResult(null);
-
-    try {
-      const installResult = await installCliToPath();
-      setResult(installResult);
-      setStatus((currentStatus) => ({
-        ...currentStatus,
-        status: installResult.ok ? "installed" : currentStatus.status,
-        targetPath: installResult.targetPath,
-        commandPath: installResult.commandPath,
-        completionInstalled: installResult.completionInstalled,
-      }));
-    } catch (nextError) {
-      setCliError(nextError instanceof Error ? nextError.message : "执行 CLI 安装失败。");
-    } finally {
-      setIsInstalling(false);
-    }
-  }
-
   const handleNavigateBack = (): void => {
     router.push("/");
   };
@@ -176,7 +111,6 @@ export default function SettingsPage() {
       breadcrumbName: "设置",
     },
   ];
-  const actionLabel = status.status === "installed" ? "重新安装 ai-drawio 命令" : "安装 ai-drawio 命令";
   const trayRuntimeStatus = traySettings.mainWindowVisible
     ? "当前状态：主界面"
     : traySettings.enabled
@@ -222,59 +156,6 @@ export default function SettingsPage() {
                 {trayRuntimeStatus}
               </div>
               {trayError ? <Alert type="error" content={trayError} showIcon /> : null}
-            </Space>
-          </Card>
-          <Card
-            className="internal-panel bg-transparent h-[320px] shrink-0"
-            data-layout="settings-cli-card"
-            style={pageCardStyle}
-            bodyStyle={{ height: "100%", padding: 20 }}
-          >
-            <Space direction="vertical" size={14} style={{ width: "100%", alignItems: "stretch" }}>
-              <Title heading={3} style={{ margin: 0 }}>
-                CLI 集成
-              </Title>
-              <Paragraph style={{ margin: 0 }}>
-                将 <Text code>ai-drawio</Text> 接入终端环境，完成后可以在新的终端窗口里直接调用，安装时会请求管理员权限。
-              </Paragraph>
-              <Descriptions
-                column={1}
-                data={[
-                  {
-                    label: "命令入口",
-                    value: <Text code>{status.commandPath}</Text>,
-                  },
-                  {
-                    label: "当前状态",
-                    value: <Tag color={getCliInstallStatusColor(status.status)}>{getCliInstallStatusLabel(status.status)}</Tag>,
-                  },
-                  {
-                    label: "终端集成",
-                    value: (
-                      <Tag color={status.targetPath ? "green" : "gray"}>
-                        {status.targetPath ? "已连接" : "尚未接入"}
-                      </Tag>
-                    ),
-                  },
-                ]}
-                layout="inline-horizontal"
-              />
-              <Space wrap>
-                <Button type="primary" loading={isInstalling} onClick={handleInstall}>
-                  {actionLabel}
-                </Button>
-              </Space>
-              <Paragraph style={{ margin: 0 }}>
-                安装完成后请在新终端执行 <Text code>ai-drawio status</Text>。如果当前终端仍未识别命令，请重新打开终端。
-              </Paragraph>
-              {result ? (
-                <Alert
-                  type={result.ok ? "success" : "warning"}
-                  content={result.message}
-                  showIcon
-                />
-              ) : null}
-              {cliError ? <Alert type="error" content={cliError} showIcon /> : null}
             </Space>
           </Card>
         </div>

@@ -26,9 +26,6 @@ test("conversation home source includes delete actions", async () => {
   assert.match(source, /renameDraftTitle/);
   assert.match(source, /renameDialogConversationId/);
   assert.match(source, /loadConversations/);
-  assert.match(source, /getCliInstallStatus/);
-  assert.match(source, /getCliInstallStatusLabel/);
-  assert.match(source, /getCliInstallStatusColor/);
   assert.match(source, /consumeHomeRedirectError/);
   assert.match(source, /subscribeConversationChanges/);
   assert.match(source, /updateConversationTitle/);
@@ -55,20 +52,18 @@ test("conversation home source includes delete actions", async () => {
   assert.match(source, /const pageCardStyle = \{[\s\S]*borderRadius: 8,/);
   assert.match(source, /const listCardStyle = \{[\s\S]*borderRadius: 8,/);
   assert.match(source, /选择历史会话开启工作区/);
-  assert.match(source, /const \[cliInstallStatus, setCliInstallStatus\] = useState/);
-  assert.match(source, /const \[cliStatusError, setCliStatusError\] = useState/);
-  assert.match(source, /data-layout="home-toolbar"/);
-  assert.match(source, /data-layout="home-cli-status"/);
-  assert.match(source, /data-status=\{cliInstallStatus\.status\}/);
-  assert.match(source, /backgroundColor: `rgb\(var\(--\$\{getCliInstallStatusColor\(cliInstallStatus\.status\)\}-6\)\)`/);
-  assert.match(source, /title=\{cliStatusError \? cliStatusError : getCliInstallStatusLabel\(cliInstallStatus\.status\)\}/);
+  assert.match(source, /data-layout="home-settings-fab"/);
   assert.match(
     source,
-    /<Text style=\{\{[\s\S]*color: 'var\(--color-text-3\)'[\s\S]*fontSize: 12[\s\S]*fontWeight: 500[\s\S]*\}\}>[\s\S]*getCliInstallStatusLabel\(cliInstallStatus\.status\)[\s\S]*<\/Text>/
+    /className="fixed right-6 bottom-\[16vh\] z-\[12\]" data-layout="home-settings-fab"/
   );
   assert.match(
     source,
-    /<Button[\s\S]*icon=\{<IconSettings \/>\}[\s\S]*aria-label="打开设置"[\s\S]*onClick=\{openSettings\}[\s\S]*>[\s\S]*<\/Button>/
+    /<Button[\s\S]*icon=\{<IconSettings style=\{\{ display: 'block', fontSize: 20 \}\} \/>\}[\s\S]*aria-label="打开设置"[\s\S]*onClick=\{openSettings\}[\s\S]*><\/Button>/
+  );
+  assert.match(
+    source,
+    /<Button[\s\S]*shape="circle"[\s\S]*type="primary"[\s\S]*className="flex! h-10! w-10! items-center! justify-center! rounded-full border-0 bg-\[rgb\(15,23,42\)\]! p-0! shadow-\[0_14px_28px_rgba\(15,23,42,0\.22\)\]"/
   );
   assert.match(
     source,
@@ -79,10 +74,20 @@ test("conversation home source includes delete actions", async () => {
     /<Space direction="vertical" size=\{8\} style=\{\{ width: '100%', alignItems: 'stretch' \}\}>[\s\S]*<Text style=\{\{[\s\S]*color: 'var\(--color-text-4\)'[\s\S]*fontSize: 12[\s\S]*fontWeight: 400[\s\S]*\}\}>[\s\S]*formatDate\(item\.updatedAt\)[\s\S]*<\/Text>[\s\S]*<Paragraph/
   );
   assert.doesNotMatch(source, /CLI 集成 \{getCliInstallStatusLabel\(cliInstallStatus\.status\)\}/);
+  assert.doesNotMatch(source, /getCliInstallStatus/);
+  assert.doesNotMatch(source, /getCliInstallStatusLabel/);
+  assert.doesNotMatch(source, /getCliInstallStatusColor/);
+  assert.doesNotMatch(source, /tauri-cli-install/);
+  assert.doesNotMatch(source, /cli-install-status-presentation/);
+  assert.doesNotMatch(source, /const \[cliInstallStatus, setCliInstallStatus\] = useState/);
+  assert.doesNotMatch(source, /const \[cliStatusError, setCliStatusError\] = useState/);
+  assert.doesNotMatch(source, /data-layout="home-cli-status"/);
+  assert.doesNotMatch(source, /data-status=\{cliInstallStatus\.status\}/);
   assert.doesNotMatch(source, /cliInstallStatus\.commandPath/);
+  assert.doesNotMatch(source, /data-layout="home-toolbar"/);
   assert.doesNotMatch(
     source,
-    /<div className="flex items-center justify-between gap-3">[\s\S]*<Title heading=\{6\}[\s\S]*<Text type="secondary">\{formatDate\(item\.updatedAt\)\}<\/Text>/
+    /<Card[\s\S]*<div[\s\S]*data-layout="home-settings-fab"/
   );
   assert.doesNotMatch(source, /<Text type="secondary">\{formatDate\(item\.updatedAt\)\}<\/Text>/);
   assert.match(source, /重命名/);

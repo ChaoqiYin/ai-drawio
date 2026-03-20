@@ -11,7 +11,7 @@ const CLI_SCHEMA_SOURCE_PATH = new URL("../src-tauri/src/cli_schema.rs", import.
 const PACKAGE_JSON_PATH = new URL("../package.json", import.meta.url);
 const MACOS_APP_ICON_PATH = new URL("../assets/ai-drawio.icns", import.meta.url);
 
-test("packaged tauri cli wires plugin, parser, and completion generation", async () => {
+test("packaged tauri cli uses rust dispatch and completion generation without plugin config", async () => {
   const [mainSource, buildSource, cargoToml, tauriConfig, cliSchemaSource] = await Promise.all([
     readFile(MAIN_SOURCE_PATH, "utf8"),
     readFile(BUILD_SOURCE_PATH, "utf8"),
@@ -27,16 +27,17 @@ test("packaged tauri cli wires plugin, parser, and completion generation", async
     packagedCliSource = "";
   }
 
-  assert.match(cargoToml, /tauri-plugin-cli\s*=/);
-  assert.match(cargoToml, /clap_complete\s*=/);
+  assert.doesNotMatch(cargoToml, /tauri-plugin-cli\s*=/);
+  assert.doesNotMatch(cargoToml, /clap_complete\s*=/);
   assert.match(mainSource, /mod packaged_cli;/);
-  assert.match(mainSource, /tauri_plugin_cli::init/);
-  assert.match(mainSource, /packaged_cli::/);
-  assert.match(buildSource, /clap_complete/);
-  assert.match(buildSource, /generate_to/);
-  assert.match(tauriConfig, /"plugins"\s*:\s*\{/);
-  assert.match(tauriConfig, /"cli"\s*:/);
-  assert.match(tauriConfig, /"document\.apply"/);
+  assert.match(mainSource, /packaged_cli::maybe_run_from_env/);
+  assert.doesNotMatch(mainSource, /tauri_plugin_cli::init/);
+  assert.doesNotMatch(buildSource, /clap_complete/);
+  assert.doesNotMatch(buildSource, /generate_to/);
+  assert.doesNotMatch(buildSource, /cli_schema::build_cli_command/);
+  assert.match(buildSource, /tauri_build::build/);
+  assert.doesNotMatch(tauriConfig, /"plugins"\s*:\s*\{/);
+  assert.doesNotMatch(tauriConfig, /"cli"\s*:/);
   assert.match(cliSchemaSource, /Command::new\("open"\)/);
   assert.match(
     cliSchemaSource,
@@ -69,12 +70,10 @@ test("package scripts keep direct tauri build entrypoints without wrapper shell 
   assert.doesNotMatch(packageJson, /"bin"\s*:\s*\{/);
   assert.doesNotMatch(packageJson, /"cli"\s*:\s*"node --experimental-strip-types \.\/scripts\/ai-drawio-cli\.ts"/);
   assert.match(packageJson, /"build"\s*:\s*"[^"]*tauri build"/);
+  assert.match(tauriConfig, /"mainBinaryName"\s*:\s*"ai-drawio"/);
   assert.match(tauriConfig, /"targets"\s*:\s*"dmg"|\"targets\"\s*:\s*\[\s*\"dmg\"\s*\]/);
-  assert.match(tauriConfig, /"SharedSupport\/cli-completions\/_ai-drawio"/);
-  assert.match(tauriConfig, /"SharedSupport\/cli-completions\/ai-drawio\.bash"/);
-  assert.match(tauriConfig, /"SharedSupport\/cli-completions\/ai-drawio\.fish"/);
   assert.match(readme, /npm run build -- --bundles dmg/);
-  assert.match(readme, /Install ai-drawio into PATH/);
+  assert.doesNotMatch(readme, /Install ai-drawio into PATH/);
   assert.match(readme, /ai-drawio session create/);
   assert.match(readme, /ai-drawio session open <session-id>/);
   assert.match(readme, /ai-drawio canvas document\.get <session-id>/);

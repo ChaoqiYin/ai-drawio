@@ -81,9 +81,13 @@ pub enum PackagedCliCommand {
     },
 }
 
+fn should_run_cli_from_args(args: &[String]) -> bool {
+    !args.is_empty()
+}
+
 pub fn maybe_run_from_env() -> Option<i32> {
     let args = env::args().skip(1).collect::<Vec<_>>();
-    if args.is_empty() {
+    if !should_run_cli_from_args(&args) {
         return None;
     }
 
@@ -924,7 +928,7 @@ mod tests {
     use super::{
         build_app_not_running_response, build_request_for_command, build_resolution_request,
         build_status_not_running_response, maybe_write_output_file, parse_cli_args,
-        requires_running_app, OpenMode, PackagedCliCommand,
+        requires_running_app, should_run_cli_from_args, OpenMode, PackagedCliCommand,
     };
     use crate::control_protocol::ControlResponse;
     use serde_json::json;
@@ -942,6 +946,20 @@ mod tests {
                 session_id: "sess-1".to_string()
             }
         );
+    }
+
+    #[test]
+    fn detects_empty_args_as_gui_launch() {
+        let args: Vec<String> = vec![];
+
+        assert!(!should_run_cli_from_args(&args));
+    }
+
+    #[test]
+    fn detects_non_empty_args_as_cli_launch() {
+        let args = vec!["status".to_string()];
+
+        assert!(should_run_cli_from_args(&args));
     }
 
     #[test]

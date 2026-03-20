@@ -48,8 +48,15 @@ test("session tabs shell uses a fixed header plus a flex detail body", async () 
   assert.match(source, /useWorkspaceSessionStore/);
   assert.match(source, /openedSessions/);
   assert.match(source, /activeSessionId/);
+  assert.match(source, /createConversation/);
+  assert.match(source, /const \[isCreatingSession, setIsCreatingSession\] = useState\(false\);/);
+  assert.match(source, /const \[createSessionError, setCreateSessionError\] = useState\(''\);/);
+  assert.match(source, /async function handleCreateSession\(\): Promise<void> \{/);
+  assert.match(source, /const conversation = await createConversation\('本地 AI 会话'\);/);
+  assert.match(source, /openSession\(\{/);
+  assert.match(source, /setIsCreatingSession\(true\)/);
+  assert.match(source, /setIsCreatingSession\(false\)/);
   assert.match(source, /resetSessionDetail/);
-  assert.match(source, /router\.push\("\/"\)/);
   assert.match(source, /InternalTopNavigation/);
   assert.match(source, /InternalBreadcrumb/);
   assert.match(source, /<div className="relative z-\[1\] flex min-h-0 min-w-0 flex-1 flex-col gap-3">/);
@@ -61,15 +68,26 @@ test("session tabs shell uses a fixed header plus a flex detail body", async () 
   assert.match(source, /className="min-w-0 overflow-x-auto" data-layout="session-shell-tabs"/);
   assert.match(source, /className="min-w-max px-1 py-0" data-layout="session-shell-tabs-inner"/);
   assert.match(source, /<Tabs activeTab=\{activeSessionId\} className="internal-session-tabs" onChange=\{activateSession\} type="rounded">/);
+  assert.match(source, /<InternalTopNavigation[\s\S]*actions=\{/);
+  assert.match(source, /aria-label="创建本地会话"/);
+  assert.match(source, /data-layout="session-shell-create"/);
+  assert.match(source, /IconPlus/);
+  assert.match(source, /createSessionError \? <Alert type="error" content=\{createSessionError\} showIcon \/> : null/);
   assert.match(source, /<InternalTopNavigation[\s\S]*data-layout="session-shell-tabs"/);
   assert.match(source, /data-layout="session-tab-title"/);
   assert.match(source, /className="relative min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden" data-layout="session-shell-body"/);
   assert.match(source, /SessionWorkspaceHost/);
   assert.match(source, /openedSessions\.map\(\(session\) =>/);
   assert.match(source, /hidden=\{session\.id !== activeSessionId\}/);
+  assert.match(source, /当前没有打开的标签页/);
+  assert.match(source, /可以从首页重新进入一个会话，或等待新的会话在这里打开。/);
   assert.doesNotMatch(source, /<Layout/);
   assert.doesNotMatch(source, /<Content/);
   assert.doesNotMatch(source, /const \[openedSessionIds, setOpenedSessionIds\] = useState<string\[\]>/);
   assert.doesNotMatch(source, /const \[activeSessionId, setActiveSessionId\] = useState/);
   assert.doesNotMatch(source, /ConversationHome/);
+  assert.doesNotMatch(
+    source,
+    /useEffect\(\(\) => \{\s*if \(openedSessions\.length > 0\) \{\s*return;\s*\}\s*router\.push\("\/"\);\s*\}, \[openedSessions\.length, router\]\);/
+  );
 });

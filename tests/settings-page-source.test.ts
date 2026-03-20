@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 
 const HOME_SOURCE_PATH = new URL(
   "../app/(internal)/_components/conversation-home.tsx",
@@ -52,10 +52,6 @@ test("home page links to settings and settings page renders cli integration acti
     sourceSafe(settingsSource),
     /className="internal-panel bg-transparent shrink-0" data-layout="settings-tray-card"/
   );
-  assert.match(
-    sourceSafe(settingsSource),
-    /className="internal-panel bg-transparent h-\[320px\] shrink-0" data-layout="settings-cli-card"/
-  );
   assert.match(settingsSource, /data-layout="settings-top-nav-body"/);
   assert.match(settingsSource, /dataLayout="settings-breadcrumb"/);
   assert.match(settingsSource, /const breadcrumbRoutes:\s*InternalBreadcrumbRoute\[\]\s*=\s*\[/);
@@ -66,16 +62,6 @@ test("home page links to settings and settings page renders cli integration acti
     settingsSource,
     /<InternalTopNavigation[\s\S]*content=\{\s*<div[\s\S]*data-layout="settings-top-nav-body"[\s\S]*<InternalBreadcrumb[\s\S]*dataLayout="settings-breadcrumb"[\s\S]*routes=\{breadcrumbRoutes\}/
   );
-  assert.match(settingsSource, /CLI Integration|CLI 集成/);
-  assert.match(settingsSource, /接入终端环境/);
-  assert.match(settingsSource, /安装 ai-drawio 命令/);
-  assert.match(settingsSource, /重新安装 ai-drawio 命令/);
-  assert.match(settingsSource, /ai-drawio status/);
-  assert.match(settingsSource, /如果当前终端仍未识别命令，请重新打开终端/);
-  assert.match(settingsSource, /getCliInstallStatus/);
-  assert.match(settingsSource, /installCliToPath/);
-  assert.match(settingsSource, /getCliInstallStatusLabel/);
-  assert.match(settingsSource, /getCliInstallStatusColor/);
   assert.match(settingsSource, /getTraySettings/);
   assert.match(settingsSource, /setTrayEnabled/);
   assert.match(settingsSource, /subscribeTrayRuntimeStateChange/);
@@ -104,11 +90,6 @@ test("home page links to settings and settings page renders cli integration acti
   assert.match(settingsSource, /unsubscribeTrayRuntimeStateChange\(\);/);
   assert.match(settingsSource, /data-layout="settings-tray-card"/);
   assert.match(settingsSource, /data-testid="tray-runtime-status"/);
-  assert.match(settingsSource, /data-layout="settings-cli-card"/);
-  assert.match(
-    settingsSource,
-    /data-layout="settings-tray-card"[\s\S]*data-layout="settings-cli-card"/
-  );
   assert.doesNotMatch(settingsSource, /label: "托盘状态"/);
   assert.doesNotMatch(settingsSource, /label: "关闭按钮行为"/);
   assert.doesNotMatch(settingsSource, /<Text key=\{trayRenderDebugState\} type="secondary">\s*\{trayRuntimeStatus\}\s*<\/Text>/);
@@ -116,14 +97,17 @@ test("home page links to settings and settings page renders cli integration acti
   assert.doesNotMatch(settingsSource, /debug instance=/);
   assert.doesNotMatch(settingsSource, /render state=/);
   assert.doesNotMatch(settingsSource, /dom text=/);
-  assert.match(
-    settingsSource,
-    /label: "当前状态"[\s\S]*value:\s*<Tag color=\{getCliInstallStatusColor\(status\.status\)\}>[\s\S]*getCliInstallStatusLabel\(status\.status\)[\s\S]*<\/Tag>/
-  );
-  assert.match(
-    settingsSource,
-    /label: "终端集成"[\s\S]*value:\s*\([\s\S]*<Tag color=\{status\.targetPath \? "green" : "gray"\}>[\s\S]*status\.targetPath \? "已连接" : "尚未接入"[\s\S]*<\/Tag>/
-  );
+  assert.doesNotMatch(settingsSource, /CLI Integration|CLI 集成/);
+  assert.doesNotMatch(settingsSource, /接入终端环境/);
+  assert.doesNotMatch(settingsSource, /安装 ai-drawio 命令/);
+  assert.doesNotMatch(settingsSource, /重新安装 ai-drawio 命令/);
+  assert.doesNotMatch(settingsSource, /ai-drawio status/);
+  assert.doesNotMatch(settingsSource, /如果当前终端仍未识别命令，请重新打开终端/);
+  assert.doesNotMatch(settingsSource, /getCliInstallStatus/);
+  assert.doesNotMatch(settingsSource, /installCliToPath/);
+  assert.doesNotMatch(settingsSource, /getCliInstallStatusLabel/);
+  assert.doesNotMatch(settingsSource, /getCliInstallStatusColor/);
+  assert.doesNotMatch(settingsSource, /data-layout="settings-cli-card"/);
   assert.doesNotMatch(settingsSource, /function getStatusLabel/);
   assert.doesNotMatch(settingsSource, /function getStatusColor/);
   assert.doesNotMatch(settingsSource, /<Layout/);
@@ -137,18 +121,13 @@ test("home page links to settings and settings page renders cli integration acti
   assert.doesNotMatch(settingsSource, /<Text code>hash -r<\/Text>/);
 });
 
-test("settings page uses tauri cli install helpers", async () => {
-  const helperSource = await readFile(TAURI_CLI_INSTALL_PATH, "utf8");
+test("settings page no longer depends on tauri cli install helpers", async () => {
+  const settingsSource = await readFile(SETTINGS_COMPONENT_PATH, "utf8");
 
-  assert.match(helperSource, /get_cli_install_status/);
-  assert.match(helperSource, /install_cli_to_path/);
-  assert.match(
-    helperSource,
-    /status:\s*"not_installed"\s*\|\s*"installed"\s*\|\s*"installed_other_build"\s*\|\s*"mismatched"\s*\|\s*"error"/
-  );
-  assert.match(helperSource, /commandInstalled:\s*boolean/);
-  assert.match(helperSource, /completionInstalled:\s*boolean/);
-  assert.match(helperSource, /__TAURI__\?\.core/);
+  await assert.rejects(() => access(TAURI_CLI_INSTALL_PATH));
+  assert.doesNotMatch(settingsSource, /tauri-cli-install/);
+  assert.doesNotMatch(settingsSource, /CliInstallStatus/);
+  assert.doesNotMatch(settingsSource, /CliInstallResult/);
 });
 
 function sourceSafe(source: string): string {
