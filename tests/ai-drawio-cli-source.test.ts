@@ -9,10 +9,6 @@ const CLI_PREVIEW_REFERENCE_PATH = new URL(
   "../skills/ai-drawio-cli/references/canvas-document-preview.md",
   import.meta.url
 );
-const CLI_CONVERSATION_CREATE_REFERENCE_PATH = new URL(
-  "../skills/ai-drawio-cli/references/conversation-create.md",
-  import.meta.url
-);
 const CLI_APPLY_REFERENCE_PATH = new URL(
   "../skills/ai-drawio-cli/references/canvas-document-apply.md",
   import.meta.url
@@ -26,7 +22,6 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
     openReferenceSource,
     statusReferenceSource,
     previewReferenceSource,
-    conversationCreateReferenceSource,
     applyReferenceSource,
     agentSource,
     schemaSource
@@ -35,7 +30,6 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
     readFile(CLI_OPEN_REFERENCE_PATH, "utf8"),
     readFile(CLI_STATUS_REFERENCE_PATH, "utf8"),
     readFile(CLI_PREVIEW_REFERENCE_PATH, "utf8"),
-    readFile(CLI_CONVERSATION_CREATE_REFERENCE_PATH, "utf8"),
     readFile(CLI_APPLY_REFERENCE_PATH, "utf8"),
     readFile(CLI_AGENT_PATH, "utf8"),
     readFile(CLI_SCHEMA_PATH, "utf8")
@@ -48,22 +42,21 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
   assert.match(skillSource, /Commands for different session IDs may run in parallel\./);
   assert.match(skillSource, /Commands that target the same session ID must run strictly serially\./);
   assert.match(skillSource, /`open`: only when you need to launch the desktop app itself\./);
-  assert.match(skillSource, /`conversation create`: compatibility alias for `session create` when that exact command name matters\./);
   assert.match(skillSource, /`canvas document\.preview <session-id>`: PNG preview export\./);
   assert.match(skillSource, /If a command returns `APP_NOT_RUNNING`, or `status` returns `running: false`, run `ai-drawio open` yourself outside the sandbox and then continue with the original task\./);
   assert.doesNotMatch(skillSource, /Tell the user to open the desktop window manually before retrying\./);
   assert.match(skillSource, /`ai-drawio open` -> `references\/open\.md`/);
-  assert.match(skillSource, /`ai-drawio conversation create` -> `references\/conversation-create\.md`/);
+  assert.match(skillSource, /`ai-drawio session create` -> `references\/session-create\.md`/);
   assert.match(skillSource, /`ai-drawio canvas document\.preview` -> `references\/canvas-document-preview\.md`/);
   assert.doesNotMatch(skillSource, /--session|--session-title|--title/);
+  assert.doesNotMatch(skillSource, /conversation create/);
   assert.match(openReferenceSource, /ai-drawio open/);
   assert.match(openReferenceSource, /ai-drawio open --mode window/);
   assert.match(openReferenceSource, /Use this when the desktop app is not running and the skill must launch it before continuing the original task\./);
+  assert.match(statusReferenceSource, /ai-drawio status/);
   assert.match(statusReferenceSource, /If `running: false`, the skill should follow by running `ai-drawio open` outside the sandbox instead of asking the user to open the app manually\./);
   assert.match(previewReferenceSource, /ai-drawio canvas document\.preview sess-123/);
   assert.match(previewReferenceSource, /Every preview command must include the target session id as the first positional argument\./);
-  assert.match(conversationCreateReferenceSource, /ai-drawio conversation create/);
-  assert.match(conversationCreateReferenceSource, /compatibility alias for `ai-drawio session create`/);
   assert.match(applyReferenceSource, /The prompt argument is required for every apply command\./);
   assert.match(applyReferenceSource, /Every apply command must include the target session id as the first positional argument\./);
   assert.match(applyReferenceSource, /Prefer inline XML when the XML is already in memory and fits safely in one command\./);

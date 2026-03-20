@@ -24,17 +24,8 @@ pub fn build_cli_command() -> Command {
         )
         .subcommand(
             Command::new("status")
-                .about("Inspect the running desktop shell state")
+                .about("Inspect whether the desktop app is running")
                 .after_help("Example:\n  ai-drawio status"),
-        )
-        .subcommand(
-            Command::new("conversation")
-                .about("Manage local conversations")
-                .subcommand(
-                    Command::new("create")
-                        .about("Create a new local conversation")
-                        .after_help("Example:\n  ai-drawio conversation create"),
-                ),
         )
         .subcommand(
             Command::new("session")
@@ -48,6 +39,18 @@ pub fn build_cli_command() -> Command {
                     Command::new("list")
                         .about("List all local sessions")
                         .after_help("Example:\n  ai-drawio session list"),
+                )
+                .subcommand(
+                    Command::new("status")
+                        .about("Inspect one local session")
+                        .after_help("Example:\n  ai-drawio session status sess-123")
+                        .arg(
+                            Arg::new("session-id")
+                                .index(1)
+                                .value_name("session-id")
+                                .help("Inspect whether the exact persisted session id is ready")
+                                .required(true),
+                        ),
                 )
                 .subcommand(
                     Command::new("open")
@@ -69,7 +72,7 @@ pub fn build_cli_command() -> Command {
                 .about("Read or write the active draw.io document")
                 .subcommand(
                     Command::new("document.get")
-                        .about("Read the current draw.io document")
+                        .about("Read the specified draw.io document")
                         .after_help(
                             "Provide the target session id explicitly.\n\nExample:\n  ai-drawio canvas document.get sess-123 --output-file ./current.drawio",
                         )
@@ -89,7 +92,7 @@ pub fn build_cli_command() -> Command {
                 )
                 .subcommand(
                     Command::new("document.svg")
-                        .about("Export the current draw.io document as per-page SVG")
+                        .about("Export the specified draw.io document as per-page SVG")
                         .after_help(
                             "If --output-file is set, the value is treated as an output directory for generated SVG files.\n\nExample:\n  ai-drawio canvas document.svg sess-123 --output-file ./svg-pages",
                         )
@@ -109,7 +112,7 @@ pub fn build_cli_command() -> Command {
                 )
                 .subcommand(
                     Command::new("document.preview")
-                        .about("Export the current draw.io document as per-page PNG preview images")
+                        .about("Export the specified draw.io document as per-page PNG preview images")
                         .after_help(
                             "Examples:\n  ai-drawio canvas document.preview sess-123 ./previews\n  ai-drawio canvas document.preview sess-123 ./previews --page 2",
                         )

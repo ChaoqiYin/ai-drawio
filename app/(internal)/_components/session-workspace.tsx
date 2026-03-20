@@ -219,13 +219,16 @@ type ShellWindow = Window &
             svg: string;
           }>;
         }>;
-        exportPreviewPages: () => Promise<{
+        exportPreviewPages: (selectedPage?: number) => Promise<{
+          pageCount: number;
           exportedAt: string;
           pages: Array<{
             id: string;
+            index: number;
             name: string;
             pngDataUri: string;
           }>;
+          selectedPage?: number;
         }>;
         getDocument: () => Promise<{ readAt: string; xml: string }>;
       };
@@ -1106,20 +1109,42 @@ export default function SessionWorkspace({
       };
     }
 
-    async function exportCurrentPreviewPages(): Promise<{
+    async function exportCurrentPreviewPages(selectedPage?: number): Promise<{
+      pageCount: number;
       exportedAt: string;
       pages: Array<{
         id: string;
+        index: number;
         name: string;
         pngDataUri: string;
       }>;
+      selectedPage?: number;
     }> {
       const xml = await readCurrentDocumentXml();
       const pages = await buildPngPagesForExport(xml);
+      const pageCount = pages.length;
+
+      if (typeof selectedPage === 'number') {
+        const selectedIndex = selectedPage - 1;
+
+        return {
+          exportedAt: new Date().toISOString(),
+          pageCount,
+          pages:
+            selectedIndex >= 0 && selectedIndex < pages.length
+              ? [{ ...pages[selectedIndex], index: selectedPage }]
+              : [],
+          selectedPage,
+        };
+      }
 
       return {
         exportedAt: new Date().toISOString(),
-        pages,
+        pageCount,
+        pages: pages.map((page, index) => ({
+          ...page,
+          index: index + 1,
+        })),
       };
     }
 
@@ -1372,8 +1397,8 @@ export default function SessionWorkspace({
           return exportCurrentSvgPages();
         },
 
-        async exportPreviewPages() {
-          return exportCurrentPreviewPages();
+        async exportPreviewPages(selectedPage?: number) {
+          return exportCurrentPreviewPages(selectedPage);
         },
       },
 
@@ -1411,8 +1436,10 @@ export default function SessionWorkspace({
           ),
         applyDocumentWithoutHistory: async (xml) =>
           runSessionDocumentAction(sessionIdRef.current, async () => applyDocumentWithoutHistory(xml)),
-        exportPreviewPages: async () =>
-          runSessionDocumentAction(sessionIdRef.current, async () => exportCurrentPreviewPages()),
+        exportPreviewPages: async (selectedPage?: number) =>
+          runSessionDocumentAction(sessionIdRef.current, async () =>
+            exportCurrentPreviewPages(selectedPage),
+          ),
         exportSvgPages: async () =>
           runSessionDocumentAction(sessionIdRef.current, async () => exportCurrentSvgPages()),
         getDocument: async () =>

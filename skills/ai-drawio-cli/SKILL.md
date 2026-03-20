@@ -32,9 +32,9 @@ Use this skill for draw.io work that must go through the installed `ai-drawio` C
 ## Command Selection
 
 - `open`: only when you need to launch the desktop app itself.
-- `status`: only when you need to know whether the desktop app is already running.
+- `status`: only when you need to know whether the desktop app is running.
+- `session status <session-id>`: only when you need to know whether one session is ready.
 - `session create`: only when the user explicitly needs a new ready session.
-- `conversation create`: compatibility alias for `session create` when that exact command name matters.
 - `session list`: only when the user explicitly needs persisted session IDs.
 - `session open <session-id>`: only when the user explicitly wants a session opened or when later session-targeted work must ensure readiness first.
 - `canvas document.get <session-id>`: default entry point when you need the current XML first.
@@ -79,7 +79,6 @@ Use this skill for draw.io work that must go through the installed `ai-drawio` C
   - `ai-drawio open` -> `references/open.md`
   - `ai-drawio status` -> `references/status.md`
   - `ai-drawio session create` -> `references/session-create.md`
-  - `ai-drawio conversation create` -> `references/conversation-create.md`
   - `ai-drawio session list` -> `references/session-list.md`
   - `ai-drawio session open` -> `references/session-open.md`
   - `ai-drawio canvas document.get` -> `references/canvas-document-get.md`

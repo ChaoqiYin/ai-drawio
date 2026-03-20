@@ -53,16 +53,20 @@ The desktop app starts on a local AI conversation history page and opens draw.io
   Lists all persisted local sessions and returns each session `id` and `title`.
 - `ai-drawio session create`
   Creates a new persisted session, opens it, waits until the draw.io runtime is ready, and returns the new `sessionId`.
+- `ai-drawio status`
+  Inspects whether the desktop app is running.
+- `ai-drawio session status <session-id>`
+  Inspects whether the specified session is ready.
 - `ai-drawio session open <session-id>`
   Opens one persisted session by id and waits until it is ready.
 - `ai-drawio canvas document.get <session-id>`
-  Reads the current draw.io document from the specified ready session.
+  Reads the specified draw.io document from the specified ready session.
 - `ai-drawio canvas document.svg <session-id> --output-file <path>`
-  Exports per-page SVG files from the specified session into the output directory.
+  Exports per-page SVG files for the specified document into the output directory.
 - `ai-drawio canvas document.preview <session-id> <output-directory>`
-  Exports every page of the specified draw.io document as PNG preview files into the required output directory and returns JSON with absolute file paths.
+  Exports every page of the specified document as PNG preview files into the required output directory and returns JSON with absolute file paths.
 - `ai-drawio canvas document.preview <session-id> <output-directory> --page <page-number>`
-  Exports only the selected 1-based page from the specified session as a PNG preview file and returns JSON with the generated file path.
+  Exports only the selected 1-based page from the specified document as a PNG preview file and returns JSON with the generated file path.
 - `ai-drawio canvas document.apply <session-id> <prompt> '<mxfile>...</mxfile>'`
   Treats the first positional argument as the target session id, the second as the required request summary, and the third as inline XML content before applying the document.
 - `ai-drawio canvas document.apply <session-id> <prompt> --xml-file <path>`

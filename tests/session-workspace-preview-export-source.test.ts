@@ -7,15 +7,17 @@ const SOURCE_PATH = new URL(
   import.meta.url
 );
 
-test("session workspace exposes document bridge PNG preview export for all current pages", async () => {
+test("session workspace exposes document bridge PNG preview export with optional page selection", async () => {
   const source = await readFile(SOURCE_PATH, "utf8");
 
-  assert.match(source, /exportPreviewPages: \(\) => Promise<\{/);
+  assert.match(source, /exportPreviewPages: \(selectedPage\?: number\) => Promise<\{/);
   assert.match(source, /aiDrawioBuildPngPreviewPages: \{ isAsync: true \}/);
-  assert.match(source, /async function exportCurrentPreviewPages\(\): Promise<\{/);
+  assert.match(source, /async function exportCurrentPreviewPages\(selectedPage\?: number\): Promise<\{/);
   assert.match(source, /const pages = await buildPngPagesForExport\(xml\)/);
+  assert.match(source, /const pageCount = pages\.length/);
+  assert.match(source, /selectedIndex >= 0 && selectedIndex < pages\.length/);
   assert.match(source, /typeof candidate\.pngDataUri === 'string'/);
-  assert.match(source, /async exportPreviewPages\(\) \{/);
-  assert.match(source, /return exportCurrentPreviewPages\(\);/);
+  assert.match(source, /async exportPreviewPages\(selectedPage\?: number\) \{/);
+  assert.match(source, /return exportCurrentPreviewPages\(selectedPage\);/);
   assert.match(source, /exportedAt: new Date\(\)\.toISOString\(\)/);
 });

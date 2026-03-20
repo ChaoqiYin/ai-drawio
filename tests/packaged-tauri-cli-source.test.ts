@@ -75,11 +75,14 @@ test("package scripts keep direct tauri build entrypoints without wrapper shell 
   assert.match(readme, /npm run build -- --bundles dmg/);
   assert.doesNotMatch(readme, /Install ai-drawio into PATH/);
   assert.match(readme, /ai-drawio session create/);
+  assert.match(readme, /ai-drawio status/);
+  assert.match(readme, /ai-drawio session status <session-id>/);
   assert.match(readme, /ai-drawio session open <session-id>/);
   assert.match(readme, /ai-drawio canvas document\.get <session-id>/);
   assert.match(readme, /ai-drawio canvas document\.preview <session-id> <output-directory>/);
   assert.match(readme, /ai-drawio canvas document\.preview <session-id> <output-directory> --page <page-number>/);
   assert.match(readme, /ai-drawio canvas document\.apply <session-id> <prompt>/);
+  assert.doesNotMatch(readme, /conversation create/);
   assert.doesNotMatch(readme, /session open --title/);
   assert.doesNotMatch(readme, /canvas document\.get --session/);
   assert.match(readme, /ai-drawio open/);

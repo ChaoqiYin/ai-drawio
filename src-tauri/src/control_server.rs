@@ -73,24 +73,7 @@ fn handle_request(app: &AppHandle, request: ControlRequest) -> ControlResponse {
             session_runtime::ensure_session(app, &bridge_state, timeout).map(|state| json!(state))
         }
         CommandKind::Status => {
-            match session_runtime::get_shell_state(app, &bridge_state, timeout) {
-                Ok(state) => Ok(json!({
-                    "address": CONTROL_ADDR,
-                    "running": true,
-                    "shell": state
-                })),
-                Err(error) => {
-                    if error.code == "APP_NOT_READY" {
-                        Ok(json!({
-                            "address": CONTROL_ADDR,
-                            "running": true,
-                            "shell": null
-                        }))
-                    } else {
-                        Err(error)
-                    }
-                }
-            }
+            build_status_payload(app, &bridge_state, &request, timeout)
         }
         CommandKind::SessionOpen => {
             let title = request
@@ -169,10 +152,16 @@ fn handle_request(app: &AppHandle, request: ControlRequest) -> ControlResponse {
                 .require_session_id()
                 .map_err(|error| error)
                 .map(str::to_string);
-            let _page = request.payload.get("page").and_then(Value::as_u64);
+            let page = request.payload.get("page").and_then(Value::as_u64);
 
             session_id.and_then(|session_id| {
-                document_bridge::export_preview_pages(app, &bridge_state, &session_id, timeout)
+                document_bridge::export_preview_pages(
+                    app,
+                    &bridge_state,
+                    &session_id,
+                    page,
+                    timeout,
+                )
             })
         }
         CommandKind::CanvasDocumentApply => {
@@ -242,6 +231,61 @@ fn handle_request(app: &AppHandle, request: ControlRequest) -> ControlResponse {
     match result {
         Ok(data) => ControlResponse::success(&request, data),
         Err(error) => ControlResponse::error(&request, error),
+    }
+}
+
+fn build_status_payload(
+    app: &AppHandle,
+    bridge_state: &ScriptResultBridgeState,
+    request: &ControlRequest,
+    timeout: Duration,
+) -> Result<Value, ControlError> {
+    let shell = match session_runtime::get_shell_state(app, bridge_state, timeout) {
+        Ok(state) => Some(json!(state)),
+        Err(error) => {
+            if error.code == "APP_NOT_READY" {
+                None
+            } else {
+                return Err(error);
+            }
+        }
+    };
+
+    let session = request
+        .session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|session_id| build_status_session_payload(app, bridge_state, session_id, timeout))
+        .transpose()?;
+
+    Ok(json!({
+        "address": CONTROL_ADDR,
+        "running": true,
+        "session": session,
+        "shell": shell
+    }))
+}
+
+fn build_status_session_payload(
+    app: &AppHandle,
+    bridge_state: &ScriptResultBridgeState,
+    session_id: &str,
+    timeout: Duration,
+) -> Result<Value, ControlError> {
+    match session_runtime::get_session_runtime_state(app, bridge_state, session_id, timeout) {
+        Ok(state) => Ok(json!(state)),
+        Err(error) if error.code == "SESSION_NOT_READY" => Ok(json!({
+            "isReady": false,
+            "sessionId": session_id,
+            "status": "unregistered"
+        })),
+        Err(error) if error.code == "APP_NOT_READY" => Ok(json!({
+            "isReady": false,
+            "sessionId": session_id,
+            "status": "unavailable"
+        })),
+        Err(error) => Err(error),
     }
 }
 

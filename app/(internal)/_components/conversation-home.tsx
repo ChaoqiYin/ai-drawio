@@ -301,35 +301,72 @@ export default function ConversationHome() {
           bodyStyle={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 18 }}
           data-layout="home-left-panel"
         >
-          <div className="flex h-full flex-col gap-4">
-            <Space size={10} align="center" wrap>
-              <Tag color="green">{isLoading ? '正在加载本地历史' : `共 ${totalCount} 条会话`}</Tag>
-            </Space>
-            <Title heading={3} style={{ margin: 0 }}>
-              选择历史会话开启工作区
-            </Title>
-            <Space direction="vertical" size={10} style={{ width: '100%', alignItems: 'stretch' }}>
-              <Button
-                type="primary"
-                icon={<IconPlus />}
-                loading={isCreatingConversation || isPending}
-                disabled={isNavigating || isClearingAll}
-                onClick={handleCreateConversation}
+          <div className="flex h-full flex-col gap-5">
+            <div className="flex flex-col gap-2" data-layout="home-left-copy">
+              <Text className="text-[11px]! font-semibold! uppercase tracking-[0.22em] text-[rgb(var(--gray-6))]!">
+                Workspace
+              </Text>
+              <Title
+                heading={3}
+                className="mb-0! whitespace-nowrap text-[28px]! leading-[1.15] tracking-[-0.02em]"
+                style={{ margin: 0 }}
               >
-                {isCreatingConversation || isPending ? '正在打开...' : '创建本地会话'}
-              </Button>
-              <Popconfirm
-                title="确认清空全部本地数据吗？"
-                content="会删除当前域名下全部 IndexedDB 记录。"
-                okButtonProps={{ status: 'danger', loading: isClearingAll }}
-                okText={isClearingAll ? '正在清空...' : '确认清空'}
-                onOk={handleClearAllData}
+                继续你的绘图工作
+              </Title>
+              <Paragraph style={{ ...subtleTextStyle, marginBottom: 0 }}>
+                选择一个会话，回到上次的画布。
+              </Paragraph>
+            </div>
+            <div
+              className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden rounded-[22px] border border-[rgba(173,191,214,0.34)] bg-[linear-gradient(180deg,rgba(238,245,255,0.95)_0%,rgba(255,255,255,0.98)_62%,rgba(245,249,255,0.96)_100%)] px-5 py-6"
+              data-layout="home-left-visual"
+            >
+              <div className="pointer-events-none absolute inset-[18px] rounded-[18px] border border-dashed border-[rgba(156,176,202,0.38)]" />
+              <svg
+                aria-hidden="true"
+                className="relative h-full max-h-[320px] w-full"
+                fill="none"
+                viewBox="0 0 320 240"
+                xmlns="http://www.w3.org/2000/svg"
               >
-                <Button status="danger" icon={<IconPoweroff />} disabled={isClearingAll || isNavigating}>
-                  清空全部本地数据
-                </Button>
-              </Popconfirm>
-            </Space>
+                <defs>
+                  <linearGradient id="home-layout-card-fill" x1="48" y1="42" x2="162" y2="154" gradientUnits="userSpaceOnUse">
+                    <stop stopColor="#9FC4FF" />
+                    <stop offset="1" stopColor="#E8F2FF" />
+                  </linearGradient>
+                  <linearGradient id="home-layout-line-fill" x1="120" y1="58" x2="224" y2="110" gradientUnits="userSpaceOnUse">
+                    <stop stopColor="#6E96D4" />
+                    <stop offset="1" stopColor="#AFC8EC" />
+                  </linearGradient>
+                  <radialGradient
+                    id="home-layout-glow"
+                    cx="0"
+                    cy="0"
+                    r="1"
+                    gradientTransform="translate(222 58) rotate(120.964) scale(164.652 193.169)"
+                    gradientUnits="userSpaceOnUse"
+                  >
+                    <stop stopColor="#DCEBFF" />
+                    <stop offset="1" stopColor="#F7FAFF" />
+                  </radialGradient>
+                </defs>
+                <rect x="32" y="28" width="256" height="184" rx="36" fill="url(#home-layout-glow)" />
+                <path d="M95 72C121 48 160 44 189 60" stroke="url(#home-layout-line-fill)" strokeLinecap="round" strokeWidth="8" />
+                <path d="M116 155C146 176 197 178 228 154" stroke="#BED2EE" strokeLinecap="round" strokeWidth="8" />
+                <path d="M86 118H236" stroke="#D7E4F4" strokeDasharray="8 10" strokeLinecap="round" strokeWidth="6" />
+                <rect x="54" y="54" width="78" height="56" rx="18" fill="url(#home-layout-card-fill)" />
+                <rect x="184" y="48" width="82" height="62" rx="20" fill="#FFFDFD" stroke="#BFD0E6" strokeWidth="3" />
+                <rect x="100" y="138" width="124" height="46" rx="23" fill="#163152" fillOpacity="0.94" />
+                <circle cx="92" cy="82" r="9" fill="#143256" />
+                <circle cx="225" cy="79" r="9" fill="#7FA8E5" />
+                <circle cx="160" cy="161" r="8" fill="#EAF2FF" />
+                <rect x="68" y="68" width="48" height="8" rx="4" fill="#EEF5FF" />
+                <rect x="68" y="82" width="36" height="8" rx="4" fill="#D4E5FF" />
+                <rect x="198" y="67" width="44" height="8" rx="4" fill="#DCE8F7" />
+                <rect x="198" y="82" width="28" height="8" rx="4" fill="#EEF4FC" />
+                <rect x="126" y="153" width="72" height="8" rx="4" fill="#D7E7FF" fillOpacity="0.92" />
+              </svg>
+            </div>
             {error ? <Alert type="error" content={error} showIcon /> : null}
           </div>
         </Card>
@@ -342,16 +379,42 @@ export default function ConversationHome() {
         >
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex flex-col gap-3" data-layout="home-list-controls">
-              <Input
-                allowClear
-                value={searchQuery}
-                placeholder="按标题搜索会话"
-                disabled={isNavigating || isClearingAll}
-                onChange={(value) => {
-                  setSearchQuery(value);
-                  setCurrentPage(1);
-                }}
-              />
+              <div className="flex flex-wrap items-center gap-3" data-layout="home-list-toolbar">
+                <div className="min-w-[240px] flex-1">
+                  <Input
+                    allowClear
+                    value={searchQuery}
+                    placeholder="按标题搜索会话"
+                    disabled={isNavigating || isClearingAll}
+                    onChange={(value) => {
+                      setSearchQuery(value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+                <div className="ml-auto flex flex-wrap items-center gap-2" data-layout="home-list-toolbar-actions">
+                  <Button
+                    type="primary"
+                    icon={<IconPlus />}
+                    loading={isCreatingConversation || isPending}
+                    disabled={isNavigating || isClearingAll}
+                    onClick={handleCreateConversation}
+                  >
+                    {isCreatingConversation || isPending ? '正在打开...' : '创建本地会话'}
+                  </Button>
+                  <Popconfirm
+                    title="确认清空全部本地数据吗？"
+                    content="会删除当前域名下全部 IndexedDB 记录。"
+                    okButtonProps={{ status: 'danger', loading: isClearingAll }}
+                    okText={isClearingAll ? '正在清空...' : '确认清空'}
+                    onOk={handleClearAllData}
+                  >
+                    <Button status="danger" icon={<IconPoweroff />} disabled={isClearingAll || isNavigating}>
+                      清空全部本地数据
+                    </Button>
+                  </Popconfirm>
+                </div>
+              </div>
               <div data-layout="home-list-pagination">
                 {totalCount > PAGE_SIZE ? (
                   <Pagination

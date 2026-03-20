@@ -57,6 +57,8 @@ test("conversation home source includes delete actions", async () => {
   assert.match(source, /data-layout="home-right-panel"/);
   assert.match(source, /flex-1 min-w-0 min-h-0/);
   assert.match(source, /data-layout="home-list-controls"/);
+  assert.match(source, /data-layout="home-list-toolbar"/);
+  assert.match(source, /data-layout="home-list-toolbar-actions"/);
   assert.match(source, /data-layout="home-list-pagination"/);
   assert.match(source, /data-layout="home-list-viewport"/);
   assert.match(source, /overflow-y-auto/);
@@ -69,7 +71,17 @@ test("conversation home source includes delete actions", async () => {
   assert.match(source, /data-navigation-overlay="true"/);
   assert.match(source, /const pageCardStyle = \{[\s\S]*borderRadius: 8,/);
   assert.match(source, /const listCardStyle = \{[\s\S]*borderRadius: 8,/);
-  assert.match(source, /选择历史会话开启工作区/);
+  assert.match(source, /继续你的绘图工作/);
+  assert.match(source, /选择一个会话，回到上次的画布。/);
+  assert.match(source, /data-layout="home-left-copy"/);
+  assert.match(source, /data-layout="home-left-visual"/);
+  assert.match(source, /<svg[\s\S]*viewBox=/);
+  assert.doesNotMatch(
+    source,
+    /data-layout="home-left-copy"[\s\S]*创建本地会话[\s\S]*data-layout="home-left-visual"/,
+  );
+  assert.doesNotMatch(source, /正在加载本地历史/);
+  assert.doesNotMatch(source, /共 \$\{totalCount\} 条会话/);
   assert.match(source, /data-layout="home-settings-fab"/);
   assert.match(
     source,
@@ -90,6 +102,10 @@ test("conversation home source includes delete actions", async () => {
   assert.match(
     source,
     /<Space direction="vertical" size=\{8\} style=\{\{ width: '100%', alignItems: 'stretch' \}\}>[\s\S]*<Text style=\{\{[\s\S]*color: 'var\(--color-text-4\)'[\s\S]*fontSize: 12[\s\S]*fontWeight: 400[\s\S]*\}\}>[\s\S]*formatDate\(item\.updatedAt\)[\s\S]*<\/Text>[\s\S]*<Paragraph/
+  );
+  assert.match(
+    source,
+    /placeholder="按标题搜索会话"[\s\S]*data-layout="home-list-toolbar-actions"[\s\S]*创建本地会话[\s\S]*清空全部本地数据/,
   );
   assert.doesNotMatch(source, /CLI 集成 \{getCliInstallStatusLabel\(cliInstallStatus\.status\)\}/);
   assert.doesNotMatch(source, /getCliInstallStatus/);
@@ -115,8 +131,6 @@ test("conversation home source includes delete actions", async () => {
   assert.doesNotMatch(source, /borderRadius: 24,/);
   assert.doesNotMatch(source, /borderRadius: 20,/);
   assert.doesNotMatch(source, /internal-gradient-text/);
-  assert.doesNotMatch(source, /linear-gradient/);
-  assert.doesNotMatch(source, /radial-gradient/);
   assert.doesNotMatch(source, /本地 AI 历史记录/);
   assert.doesNotMatch(source, /当前桌面壳会将 AI 会话历史仅保存在浏览器 IndexedDB 中/);
   assert.doesNotMatch(source, /先选择一条已保存的 AI 会话，再进入画布工作区/);

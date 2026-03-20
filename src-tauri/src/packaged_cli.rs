@@ -44,7 +44,9 @@ pub enum PackagedCliCommand {
     Open {
         mode: OpenMode,
     },
-    Status,
+    Status {
+        session_id: String,
+    },
     SessionCreate,
     SessionList,
     SessionOpen {
@@ -141,18 +143,19 @@ fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
         Some(("open", open_matches)) => Ok(PackagedCliCommand::Open {
             mode: parse_open_mode(open_matches)?,
         }),
-        Some(("status", _)) => Ok(PackagedCliCommand::Status),
-        Some(("conversation", submatches)) => match submatches.subcommand() {
-            Some(("create", _)) => Ok(PackagedCliCommand::SessionCreate),
-            _ => Err("conversation only supports create".to_string()),
-        },
+        Some(("status", _)) => Ok(PackagedCliCommand::Status {
+            session_id: String::new(),
+        }),
         Some(("session", submatches)) => match submatches.subcommand() {
             Some(("create", _)) => Ok(PackagedCliCommand::SessionCreate),
             Some(("list", _)) => Ok(PackagedCliCommand::SessionList),
+            Some(("status", status_matches)) => Ok(PackagedCliCommand::Status {
+                session_id: required_string_arg(status_matches, "session-id")?,
+            }),
             Some(("open", open_matches)) => Ok(PackagedCliCommand::SessionOpen {
                 session_id: required_string_arg(open_matches, "session-id")?,
             }),
-            _ => Err("session only supports create, list or open".to_string()),
+            _ => Err("session only supports create, list, status or open".to_string()),
         },
         Some(("canvas", submatches)) => match submatches.subcommand() {
             Some(("document.get", get_matches)) => Ok(PackagedCliCommand::CanvasDocumentGet {
@@ -223,9 +226,19 @@ pub fn build_request_for_command(
         PackagedCliCommand::Open { .. } => {
             Err("open does not map to a control request".to_string())
         }
-        PackagedCliCommand::Status => {
-            Ok(build_request("status", None, json!({}), STATUS_TIMEOUT_MS))
-        }
+        PackagedCliCommand::Status { session_id } => Ok(build_request(
+            "status",
+            {
+                let session_id = session_id.trim();
+                if session_id.is_empty() {
+                    None
+                } else {
+                    Some(session_id.to_string())
+                }
+            },
+            json!({}),
+            STATUS_TIMEOUT_MS,
+        )),
         PackagedCliCommand::SessionCreate => {
             Err("session.create is orchestrated by the CLI".to_string())
         }
@@ -351,19 +364,26 @@ pub fn execute_cli(command: &PackagedCliCommand) -> Result<ControlResponse, Stri
         return execute_open_command(*mode);
     }
 
-    if let PackagedCliCommand::SessionCreate = command {
-        return execute_session_create();
-    }
-
     if !requires_running_app(command) {
-        return Ok(match send_status_request() {
-            Ok(response) => response,
-            Err(_) => build_status_not_running_response(),
+        return Ok(match send_status_request(status_request_session_id(command)) {
+            Ok(mut response) => {
+                trim_status_response_data(command, &mut response)?;
+                response
+            }
+            Err(_) => {
+                let mut response = build_status_not_running_response(status_request_session_id(command));
+                trim_status_response_data(command, &mut response)?;
+                response
+            }
         });
     }
 
-    if send_status_request().is_err() {
+    if send_status_request(None).is_err() {
         return Ok(build_app_not_running_response(command_name(command)));
+    }
+
+    if let PackagedCliCommand::SessionCreate = command {
+        return execute_session_create();
     }
 
     if let Some(resolution_request) = build_resolution_request(command) {
@@ -388,7 +408,7 @@ pub fn execute_cli(command: &PackagedCliCommand) -> Result<ControlResponse, Stri
 fn requires_running_app(command: &PackagedCliCommand) -> bool {
     !matches!(
         command,
-        PackagedCliCommand::Status | PackagedCliCommand::Open { .. }
+        PackagedCliCommand::Status { .. } | PackagedCliCommand::Open { .. }
     )
 }
 
@@ -413,7 +433,7 @@ fn execute_session_create() -> Result<ControlResponse, String> {
 }
 
 fn execute_open_command(mode: OpenMode) -> Result<ControlResponse, String> {
-    if let Ok(response) = send_status_request() {
+    if let Ok(response) = send_status_request(None) {
         let running = response
             .data
             .as_ref()
@@ -460,19 +480,74 @@ fn launch_desktop_app(mode: OpenMode) -> Result<(), String> {
     Ok(())
 }
 
-fn send_status_request() -> Result<ControlResponse, String> {
-    send_control_request(&build_request("status", None, json!({}), STATUS_TIMEOUT_MS))
+fn send_status_request(session_id: Option<&str>) -> Result<ControlResponse, String> {
+    send_control_request(&build_request(
+        "status",
+        session_id.map(str::to_string),
+        json!({}),
+        STATUS_TIMEOUT_MS,
+    ))
 }
 
-fn build_status_not_running_response() -> ControlResponse {
-    build_success_response(
-        "status",
+fn build_status_not_running_response(session_id: Option<&str>) -> ControlResponse {
+    let session = session_id.map(|session_id| {
         json!({
+            "isReady": false,
+            "sessionId": session_id,
+            "status": "app-not-running"
+        })
+    });
+
+    ControlResponse {
+        command: "status".to_string(),
+        data: Some(json!({
             "address": crate::control_server::CONTROL_ADDR,
             "running": false,
+            "session": session,
             "shell": null
-        }),
-    )
+        })),
+        error: None,
+        ok: true,
+        request_id: next_request_id(),
+        session_id: session_id.map(str::to_string),
+    }
+}
+
+fn trim_status_response_data(
+    command: &PackagedCliCommand,
+    response: &mut ControlResponse,
+) -> Result<(), String> {
+    let PackagedCliCommand::Status { session_id } = command else {
+        return Ok(());
+    };
+
+    if session_id.trim().is_empty() {
+        response.command = "status".to_string();
+
+        if let Some(data) = response.data.as_ref() {
+            response.data = Some(json!({
+                "address": data.get("address").cloned().unwrap_or(Value::Null),
+                "running": data.get("running").cloned().unwrap_or(Value::Bool(false))
+            }));
+        }
+
+        response.session_id = None;
+        return Ok(());
+    }
+
+    response.command = "session.status".to_string();
+
+    let session = response
+        .data
+        .as_ref()
+        .and_then(|value| value.get("session"))
+        .cloned()
+        .ok_or_else(|| "status response is missing session data".to_string())?;
+
+    response.data = Some(session);
+    response.session_id = Some(session_id.to_string());
+
+    Ok(())
 }
 
 fn build_app_not_running_response(command: &str) -> ControlResponse {
@@ -666,26 +741,59 @@ fn maybe_write_preview_pages(
     else {
         return Ok(());
     };
+    let response_selected_page = response
+        .data
+        .as_ref()
+        .and_then(|value| value.get("selectedPage"))
+        .and_then(Value::as_u64)
+        .map(|value| value as usize);
+    let response_page_count = response
+        .data
+        .as_ref()
+        .and_then(|value| value.get("pageCount"))
+        .and_then(Value::as_u64)
+        .map(|value| value as usize);
 
     let selected_indexes = if let Some(selected_page) = selected_page {
-        if selected_page == 0 || selected_page > pages.len() {
-            response.ok = false;
-            response.data = None;
-            response.error = Some(
-                ControlError::new(
-                    "PAGE_OUT_OF_RANGE",
-                    format!("requested page {selected_page} is out of range"),
-                )
-                .with_details(json!({
-                    "requestedPage": selected_page,
-                    "pageCount": pages.len()
-                })),
-            );
+        if response_selected_page == Some(selected_page) {
+            if pages.is_empty() {
+                response.ok = false;
+                response.data = None;
+                response.error = Some(
+                    ControlError::new(
+                        "PAGE_OUT_OF_RANGE",
+                        format!("requested page {selected_page} is out of range"),
+                    )
+                    .with_details(json!({
+                        "requestedPage": selected_page,
+                        "pageCount": response_page_count.unwrap_or(0)
+                    })),
+                );
 
-            return Ok(());
+                return Ok(());
+            }
+
+            (0..pages.len()).collect::<Vec<_>>()
+        } else {
+            if selected_page == 0 || selected_page > pages.len() {
+                response.ok = false;
+                response.data = None;
+                response.error = Some(
+                    ControlError::new(
+                        "PAGE_OUT_OF_RANGE",
+                        format!("requested page {selected_page} is out of range"),
+                    )
+                    .with_details(json!({
+                        "requestedPage": selected_page,
+                        "pageCount": pages.len()
+                    })),
+                );
+
+                return Ok(());
+            }
+
+            vec![selected_page - 1]
         }
-
-        vec![selected_page - 1]
     } else {
         (0..pages.len()).collect::<Vec<_>>()
     };
@@ -698,6 +806,12 @@ fn maybe_write_preview_pages(
 
     for index in selected_indexes {
         let page = &pages[index];
+        let page_number = page
+            .get("index")
+            .and_then(Value::as_u64)
+            .filter(|value| *value > 0)
+            .map(|value| value as usize)
+            .unwrap_or(index + 1);
         let page_name = page
             .get("name")
             .and_then(Value::as_str)
@@ -714,7 +828,7 @@ fn maybe_write_preview_pages(
         }
 
         let png_bytes = decode_png_data_uri(png_data_uri)?;
-        let file_name = build_preview_page_file_name(index, page_name);
+        let file_name = build_preview_page_file_name(page_number - 1, page_name);
         let output_path = PathBuf::from(output_directory).join(file_name);
         fs::write(&output_path, png_bytes).map_err(|error| {
             format!(
@@ -730,7 +844,7 @@ fn maybe_write_preview_pages(
 
         let mut updated_page = page.as_object().cloned().unwrap_or_default();
         updated_page.remove("pngDataUri");
-        updated_page.insert("index".to_string(), json!(index + 1));
+        updated_page.insert("index".to_string(), json!(page_number));
         updated_page.insert("path".to_string(), Value::String(absolute_output_path));
         updated_pages.push(Value::Object(updated_page));
     }
@@ -807,7 +921,7 @@ fn require_apply_prompt(prompt: &Option<String>) -> Result<String, String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
-        .ok_or_else(|| "canvas document.apply requires --prompt <text>".to_string())
+        .ok_or_else(|| "canvas document.apply requires positional <prompt>".to_string())
 }
 
 fn read_stdin() -> Result<String, String> {
@@ -852,7 +966,7 @@ fn build_success_response(command: &str, data: Value) -> ControlResponse {
 fn command_name(command: &PackagedCliCommand) -> &'static str {
     match command {
         PackagedCliCommand::Open { .. } => "open",
-        PackagedCliCommand::Status => "status",
+        PackagedCliCommand::Status { .. } => "status",
         PackagedCliCommand::SessionCreate => "session.create",
         PackagedCliCommand::SessionList => "session.list",
         PackagedCliCommand::SessionOpen { .. } => "session.open",
@@ -861,6 +975,20 @@ fn command_name(command: &PackagedCliCommand) -> &'static str {
         PackagedCliCommand::CanvasDocumentPreview { .. } => "canvas.document.preview",
         PackagedCliCommand::CanvasDocumentApply { .. } => "canvas.document.apply",
         PackagedCliCommand::CanvasDocumentRestore { .. } => "canvas.document.restore",
+    }
+}
+
+fn status_request_session_id(command: &PackagedCliCommand) -> Option<&str> {
+    match command {
+        PackagedCliCommand::Status { session_id } => {
+            let session_id = session_id.trim();
+            if session_id.is_empty() {
+                None
+            } else {
+                Some(session_id)
+            }
+        }
+        _ => None,
     }
 }
 
@@ -928,7 +1056,8 @@ mod tests {
     use super::{
         build_app_not_running_response, build_request_for_command, build_resolution_request,
         build_status_not_running_response, maybe_write_output_file, parse_cli_args,
-        requires_running_app, should_run_cli_from_args, OpenMode, PackagedCliCommand,
+        requires_running_app, should_run_cli_from_args, trim_status_response_data, OpenMode,
+        PackagedCliCommand,
     };
     use crate::control_protocol::ControlResponse;
     use serde_json::json;
@@ -970,6 +1099,17 @@ mod tests {
     }
 
     #[test]
+    fn rejects_conversation_create_command() {
+        let error = parse_cli_args(&["conversation", "create"])
+            .expect_err("conversation create should no longer parse");
+
+        assert!(
+            error.contains("create") || error.contains("subcommand") || error.contains("usage"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
     fn rejects_session_open_with_title_lookup() {
         let error = parse_cli_args(&["session", "open", "--title", "Alpha"])
             .expect_err("session open should reject title lookup");
@@ -1002,6 +1142,53 @@ mod tests {
             PackagedCliCommand::Open {
                 mode: OpenMode::Window
             }
+        );
+    }
+
+    #[test]
+    fn parses_top_level_status_command() {
+        let command = parse_cli_args(&["status"]).expect("top-level status should parse");
+
+        assert_eq!(
+            command,
+            PackagedCliCommand::Status {
+                session_id: String::new()
+            }
+        );
+    }
+
+    #[test]
+    fn parses_session_status_with_positional_session_id() {
+        let command = parse_cli_args(&["session", "status", "sess-1"])
+            .expect("session status with session id should parse");
+
+        assert_eq!(
+            command,
+            PackagedCliCommand::Status {
+                session_id: "sess-1".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_session_status_without_session_id() {
+        let error = parse_cli_args(&["session", "status"])
+            .expect_err("session status should require a session id");
+
+        assert!(
+            error.contains("session-id") || error.contains("required"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn rejects_top_level_status_with_session_id() {
+        let error = parse_cli_args(&["status", "sess-1"])
+            .expect_err("top-level status should not accept a session id");
+
+        assert!(
+            error.contains("unexpected") || error.contains("usage") || error.contains("status"),
+            "unexpected error: {error}"
         );
     }
 
@@ -1325,7 +1512,24 @@ mod tests {
         )
         .expect_err("document apply request should reject a missing prompt");
 
-        assert!(error.contains("--prompt"), "unexpected error: {error}");
+        assert!(error.contains("<prompt>"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn builds_document_preview_request_with_page_filter() {
+        let request = build_request_for_command(
+            &PackagedCliCommand::CanvasDocumentPreview {
+                session_id: "sess-1".to_string(),
+                output_directory: "./previews".to_string(),
+                page: Some(2),
+            },
+            Some("sess-1".to_string()),
+        )
+        .expect("document preview request should build");
+
+        assert_eq!(request.command, "canvas.document.preview");
+        assert_eq!(request.session_id, Some("sess-1".to_string()));
+        assert_eq!(request.payload.get("page"), Some(&json!(2)));
     }
 
     #[test]
@@ -1341,6 +1545,36 @@ mod tests {
         assert_eq!(request.command, "session.open");
         assert_eq!(request.payload, json!({}));
         assert_eq!(request.session_id, Some("sess-1".to_string()));
+    }
+
+    #[test]
+    fn builds_status_request_with_session_id() {
+        let request = build_request_for_command(
+            &PackagedCliCommand::Status {
+                session_id: "sess-1".to_string(),
+            },
+            None,
+        )
+        .expect("status request should build");
+
+        assert_eq!(request.command, "status");
+        assert_eq!(request.payload, json!({}));
+        assert_eq!(request.session_id, Some("sess-1".to_string()));
+    }
+
+    #[test]
+    fn builds_status_request_without_session_id() {
+        let request = build_request_for_command(
+            &PackagedCliCommand::Status {
+                session_id: String::new(),
+            },
+            None,
+        )
+        .expect("top-level status request should build");
+
+        assert_eq!(request.command, "status");
+        assert_eq!(request.payload, json!({}));
+        assert_eq!(request.session_id, None);
     }
 
     #[test]
@@ -1561,7 +1795,7 @@ mod tests {
 
     #[test]
     fn status_not_running_response_reports_manual_launch_requirement() {
-        let response = build_status_not_running_response();
+        let response = build_status_not_running_response(None);
 
         assert_eq!(response.command, "status");
         assert!(response.ok);
@@ -1577,11 +1811,92 @@ mod tests {
             Some(&json!(null))
         );
         assert_eq!(
+            response.data.as_ref().and_then(|value| value.get("session")),
+            Some(&json!(null))
+        );
+        assert_eq!(
             response
                 .data
                 .as_ref()
                 .and_then(|value| value.get("manualLaunchRequired")),
             None
+        );
+    }
+
+    #[test]
+    fn status_not_running_response_marks_requested_session_as_not_ready() {
+        let response = build_status_not_running_response(Some("sess-1"));
+
+        assert_eq!(response.session_id.as_deref(), Some("sess-1"));
+
+        assert_eq!(
+            response
+                .data
+                .as_ref()
+                .and_then(|value| value.get("session")),
+            Some(&json!({
+                "isReady": false,
+                "sessionId": "sess-1",
+                "status": "app-not-running"
+            }))
+        );
+    }
+
+    #[test]
+    fn session_status_not_running_response_can_be_trimmed_to_session_only() {
+        let mut response = build_status_not_running_response(Some("sess-1"));
+        trim_status_response_data(&PackagedCliCommand::Status {
+            session_id: "sess-1".to_string(),
+        }, &mut response)
+        .expect("session status response should trim");
+
+        assert_eq!(response.command, "session.status");
+        assert_eq!(
+            response.data,
+            Some(json!({
+                "isReady": false,
+                "sessionId": "sess-1",
+                "status": "app-not-running"
+            }))
+        );
+    }
+
+    #[test]
+    fn top_level_status_response_can_be_trimmed_to_app_only() {
+        let mut response = ControlResponse {
+            command: "status".to_string(),
+            data: Some(json!({
+                "address": "127.0.0.1:47831",
+                "running": true,
+                "session": {
+                    "isReady": true,
+                    "sessionId": "sess-1",
+                    "status": "idle"
+                },
+                "shell": {
+                    "route": "/session?id=sess-1"
+                }
+            })),
+            error: None,
+            ok: true,
+            request_id: "req-1".to_string(),
+            session_id: None,
+        };
+        trim_status_response_data(
+            &PackagedCliCommand::Status {
+                session_id: String::new(),
+            },
+            &mut response,
+        )
+        .expect("top-level status response should trim");
+
+        assert_eq!(response.command, "status");
+        assert_eq!(
+            response.data,
+            Some(json!({
+                "address": "127.0.0.1:47831",
+                "running": true
+            }))
         );
     }
 
@@ -1658,7 +1973,9 @@ mod tests {
             assert!(requires_running_app(&command));
         }
 
-        assert!(!requires_running_app(&PackagedCliCommand::Status));
+        assert!(!requires_running_app(&PackagedCliCommand::Status {
+            session_id: "sess-1".to_string()
+        }));
         assert!(!requires_running_app(&PackagedCliCommand::Open {
             mode: OpenMode::Tray
         }));

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Card, Space, Switch, Typography } from "@arco-design/web-react";
+import { IconToBottom } from "@arco-design/web-react/icon";
+import { Alert, Button, Card, Space, Typography } from "@arco-design/web-react";
 import {
   getTraySettings,
   subscribeTrayRuntimeStateChange,
@@ -84,12 +85,12 @@ export default function SettingsPage() {
     };
   }, []);
 
-  async function handleTrayEnabledChange(enabled: boolean): Promise<void> {
+  async function handleEnterTray(): Promise<void> {
     setIsTogglingTray(true);
     setTrayError("");
 
     try {
-      const nextTraySettings = await setTrayEnabled(enabled);
+      const nextTraySettings = await setTrayEnabled(true);
       setTraySettings(nextTraySettings);
     } catch (nextError) {
       setTrayError(nextError instanceof Error ? nextError.message : "更新托盘设置失败。");
@@ -145,12 +146,15 @@ export default function SettingsPage() {
                 <Title heading={3} style={{ margin: 0 }}>
                   系统托盘
                 </Title>
-                <Switch
-                  checked={traySettings.enabled}
-                  disabled={isLoadingTray || isTogglingTray}
+                <Button
+                  type="primary"
+                  icon={<IconToBottom />}
+                  disabled={isLoadingTray || isTogglingTray || traySettings.enabled}
                   loading={isTogglingTray}
-                  onChange={handleTrayEnabledChange}
-                />
+                  onClick={handleEnterTray}
+                >
+                  进入托盘
+                </Button>
               </div>
               <div className="text-[14px] leading-[1.5] text-[var(--color-text-3)]" data-testid="tray-runtime-status">
                 {trayRuntimeStatus}

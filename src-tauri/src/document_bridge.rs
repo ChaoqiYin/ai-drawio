@@ -84,10 +84,16 @@ pub fn export_preview_pages(
     app: &AppHandle,
     bridge_state: &ScriptResultBridgeState,
     session_id: &str,
+    selected_page: Option<u64>,
     timeout: Duration,
 ) -> Result<Value, ControlError> {
     let state = require_session_ready(app, bridge_state, session_id, timeout)?;
-    let script = build_session_document_bridge_script(session_id, "exportPreviewPages()")?;
+    let invocation = if let Some(selected_page) = selected_page {
+        format!("exportPreviewPages({selected_page})")
+    } else {
+        "exportPreviewPages()".to_string()
+    };
+    let script = build_session_document_bridge_script(session_id, &invocation)?;
     let value = eval_main_window_script_with_result(app, bridge_state, &script, timeout)
         .map_err(|error| ControlError::new("DOCUMENT_NOT_AVAILABLE", error))?;
 
@@ -337,8 +343,13 @@ fn build_preview_pages_payload(value: Value, state: &ShellState) -> Result<Value
                 "document preview pages are missing from the bridge response",
             )
         })?;
+    let selected_page = value.get("selectedPage").and_then(Value::as_u64);
+    let page_count = value
+        .get("pageCount")
+        .and_then(Value::as_u64)
+        .unwrap_or(pages.len() as u64);
 
-    if pages.is_empty() {
+    if pages.is_empty() && selected_page.is_none() {
         return Err(ControlError::new(
             "DOCUMENT_NOT_AVAILABLE",
             "document preview export returned no pages",
@@ -349,6 +360,11 @@ fn build_preview_pages_payload(value: Value, state: &ShellState) -> Result<Value
         .iter()
         .enumerate()
         .map(|(index, page)| {
+            let page_number = page
+                .get("index")
+                .and_then(Value::as_u64)
+                .filter(|value| *value > 0)
+                .unwrap_or((index + 1) as u64);
             let id = page
                 .get("id")
                 .and_then(Value::as_str)
@@ -379,6 +395,7 @@ fn build_preview_pages_payload(value: Value, state: &ShellState) -> Result<Value
 
             Ok(json!({
                 "id": id,
+                "index": page_number,
                 "name": name,
                 "pngDataUri": png_data_uri
             }))
@@ -397,7 +414,9 @@ fn build_preview_pages_payload(value: Value, state: &ShellState) -> Result<Value
             "route": state.route,
             "sessionId": state.session_id
         },
+        "pageCount": page_count,
         "pages": normalized_pages,
+        "selectedPage": selected_page,
         "timestamp": timestamp
     }))
 }
