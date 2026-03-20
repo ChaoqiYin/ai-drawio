@@ -19,6 +19,7 @@ test("conversation home source includes delete actions", async () => {
   assert.match(source, /Typography/);
   assert.match(source, /Modal/);
   assert.match(source, /Input/);
+  assert.match(source, /Pagination/);
   assert.match(source, /IconSettings/);
   assert.match(source, /handleDeleteConversation/);
   assert.match(source, /handleClearAllData/);
@@ -26,9 +27,15 @@ test("conversation home source includes delete actions", async () => {
   assert.match(source, /renameDraftTitle/);
   assert.match(source, /renameDialogConversationId/);
   assert.match(source, /loadConversations/);
+  assert.match(source, /searchQuery/);
+  assert.match(source, /currentPage/);
+  assert.match(source, /const PAGE_SIZE = 10/);
   assert.match(source, /consumeHomeRedirectError/);
   assert.match(source, /subscribeConversationChanges/);
   assert.match(source, /updateConversationTitle/);
+  assert.match(source, /listConversationSummaryPage/);
+  assert.match(source, /getConversationById/);
+  assert.match(source, /clearAllAppData/);
   assert.match(source, /useWorkspaceSessionStore/);
   assert.match(source, /navigationTarget/);
   assert.match(source, /shouldSuppressNavigation/);
@@ -45,6 +52,8 @@ test("conversation home source includes delete actions", async () => {
   assert.match(source, /<div className=\{shellClassName\}>/);
   assert.match(source, /<div className="relative z-\[1\]">/);
   assert.match(source, /internal-page-list-card/);
+  assert.match(source, /按标题搜索会话/);
+  assert.match(source, /<Pagination/);
   assert.match(source, /accentSurfaceClassName/);
   assert.match(source, /softSurfaceClassName/);
   assert.match(source, /overlaySurfaceClassName/);
@@ -110,4 +119,5 @@ test("conversation home source includes delete actions", async () => {
   assert.doesNotMatch(source, /internal-page-overlay-card/);
   assert.doesNotMatch(source, /window\.confirm/);
   assert.doesNotMatch(source, /router\.push\(buildSessionHref\(conversationId\)\)/);
+  assert.doesNotMatch(source, /listConversations\(/);
 });

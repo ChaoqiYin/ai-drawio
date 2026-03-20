@@ -9,6 +9,7 @@ import {
   Empty,
   Input,
   Modal,
+  Pagination,
   Popconfirm,
   Space,
   Tag,
@@ -16,13 +17,13 @@ import {
 } from '@arco-design/web-react';
 import { IconDelete, IconEdit, IconPlus, IconPoweroff, IconSettings } from '@arco-design/web-react/icon';
 
-import type { ConversationRecord } from '../_lib/conversation-model';
-import { getConversationPreview, sortConversationsByUpdatedAt } from '../_lib/conversation-model';
+import { getConversationPreview, type ConversationSummaryRecord } from '../_lib/conversation-model';
 import {
-  clearAllIndexedDbDatabases,
+  clearAllAppData,
   createConversation,
   deleteConversation,
-  listConversations,
+  getConversationById,
+  listConversationSummaryPage,
   subscribeConversationChanges,
   updateConversationTitle,
 } from '../_lib/conversation-store';
@@ -43,7 +44,12 @@ const listCardStyle = {
   cursor: 'pointer',
 } as const;
 const subtleTextStyle = { color: 'var(--color-text-3)' } as const;
+const PAGE_SIZE = 10;
 const { Paragraph, Text, Title } = Typography;
+
+type ConversationListItem = ConversationSummaryRecord & {
+  preview: string;
+};
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat('zh-CN', {
@@ -57,19 +63,23 @@ export default function ConversationHome() {
   const enterSessionDetail = useWorkspaceSessionStore((state) => state.enterSessionDetail);
   const suppressNavigationUntilRef = useRef(0);
   const [isPending, startTransition] = useTransition();
-  const [items, setItems] = useState<ConversationRecord[]>([]);
+  const [items, setItems] = useState<ConversationListItem[]>([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isClearingAll, setIsClearingAll] = useState(false);
   const [deletingId, setDeletingId] = useState('');
   const [navigationTarget, setNavigationTarget] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [renameDialogConversationId, setRenameDialogConversationId] = useState('');
   const [renameDraftTitle, setRenameDraftTitle] = useState('');
   const [renameError, setRenameError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
 
   const isCreatingConversation = navigationTarget === '__creating__';
   const isNavigating = Boolean(navigationTarget) || isPending;
+  const normalizedSearchQuery = searchQuery.trim();
 
   function suppressNavigationForDelete(): void {
     suppressNavigationUntilRef.current = Date.now() + 600;
@@ -87,9 +97,25 @@ export default function ConversationHome() {
     }
 
     try {
-      const conversations = await listConversations();
+      const summaryPage = await listConversationSummaryPage({
+        page: currentPage,
+        pageSize: PAGE_SIZE,
+        searchQuery: normalizedSearchQuery,
+      });
+      const conversations = await Promise.all(
+        summaryPage.items.map(async (item) => {
+          const conversation = await getConversationById(item.id);
+
+          return {
+            ...item,
+            preview: conversation ? getConversationPreview(conversation) : 'No messages yet.',
+          };
+        }),
+      );
+
       if (isActive()) {
         setItems(conversations);
+        setTotalCount(summaryPage.total);
       }
     } catch (nextError) {
       if (isActive()) {
@@ -126,9 +152,9 @@ export default function ConversationHome() {
       cancelled = true;
       unsubscribe();
     };
-  }, []);
+  }, [currentPage, normalizedSearchQuery]);
 
-  function openConversation(conversation: ConversationRecord, options?: { force?: boolean }) {
+  function openConversation(conversation: ConversationListItem, options?: { force?: boolean }) {
     if (shouldSuppressNavigation()) {
       return;
     }
@@ -181,7 +207,7 @@ export default function ConversationHome() {
     }
   }
 
-  function openRenameDialog(conversation: ConversationRecord) {
+  function openRenameDialog(conversation: ConversationListItem) {
     if (isNavigating) {
       return;
     }
@@ -220,12 +246,8 @@ export default function ConversationHome() {
     setIsRenaming(true);
 
     try {
-      const updatedConversation = await updateConversationTitle(conversationId, nextTitle);
-      setItems((currentItems) =>
-        sortConversationsByUpdatedAt(
-          currentItems.map((item) => (item.id === updatedConversation.id ? updatedConversation : item)),
-        ),
-      );
+      await updateConversationTitle(conversationId, nextTitle);
+      await loadConversations({ keepLoading: true });
       closeRenameDialog({ force: true });
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : '重命名本地会话失败。';
@@ -242,7 +264,8 @@ export default function ConversationHome() {
     setIsClearingAll(true);
 
     try {
-      await clearAllIndexedDbDatabases();
+      await clearAllAppData();
+      setCurrentPage(1);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : '清空全部本地数据失败。');
     } finally {
@@ -276,11 +299,21 @@ export default function ConversationHome() {
           <Card className={`internal-panel ${accentSurfaceClassName}`} style={pageCardStyle}>
             <Space direction="vertical" size={14} style={{ width: '100%', alignItems: 'stretch' }}>
               <Space size={10} align="center" wrap>
-                <Tag color="green">{isLoading ? '正在加载本地历史' : `共 ${items.length} 条会话`}</Tag>
+                <Tag color="green">{isLoading ? '正在加载本地历史' : `共 ${totalCount} 条会话`}</Tag>
               </Space>
               <Title heading={3} style={{ margin: 0 }}>
                 选择历史会话开启工作区
               </Title>
+              <Input
+                allowClear
+                value={searchQuery}
+                placeholder="按标题搜索会话"
+                disabled={isNavigating || isClearingAll}
+                onChange={(value) => {
+                  setSearchQuery(value);
+                  setCurrentPage(1);
+                }}
+              />
               <Space wrap>
                 <Button
                   type="primary"
@@ -371,11 +404,21 @@ export default function ConversationHome() {
                         {formatDate(item.updatedAt)}
                       </Text>
                       <Paragraph type="secondary" ellipsis={{ rows: 2, cssEllipsis: true }} style={{ marginBottom: 0 }}>
-                        {getConversationPreview(item)}
+                        {item.preview}
                       </Paragraph>
                     </Space>
                   </Card>
                 ))}
+                {totalCount > PAGE_SIZE ? (
+                  <Pagination
+                    current={currentPage}
+                    pageSize={PAGE_SIZE}
+                    total={totalCount}
+                    size="small"
+                    showTotal
+                    onChange={(page) => setCurrentPage(page)}
+                  />
+                ) : null}
               </Space>
             )}
           </Card>
