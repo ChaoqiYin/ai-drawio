@@ -23,9 +23,10 @@ export type ConversationSummaryPage = {
 function normalizeCanvasHistoryEntries(entries: CanvasHistoryEntry[]): CanvasHistoryEntry[] {
   return entries.map((entry) => ({
     ...entry,
-    previewPages: Array.isArray(entry.previewPages)
-      ? normalizeCanvasHistoryPreviewPages(entry.previewPages)
-      : [],
+    previewPages:
+      Array.isArray(entry.previewPages) && entry.previewPages.length > 0
+        ? normalizeCanvasHistoryPreviewPages(entry.previewPages)
+        : [],
     relatedMessageId: entry.relatedMessageId ?? null,
   }));
 }
