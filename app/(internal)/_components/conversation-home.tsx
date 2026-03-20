@@ -154,7 +154,7 @@ export default function ConversationHome() {
     };
   }, [currentPage, normalizedSearchQuery]);
 
-  function openConversation(conversation: ConversationListItem, options?: { force?: boolean }) {
+  function openConversation(conversation: ConversationSummaryRecord, options?: { force?: boolean }) {
     if (shouldSuppressNavigation()) {
       return;
     }

@@ -145,3 +145,16 @@ test("conversation home source includes delete actions", async () => {
   assert.doesNotMatch(source, /router\.push\(buildSessionHref\(conversationId\)\)/);
   assert.doesNotMatch(source, /listConversations\(/);
 });
+
+test("conversation home opens sessions from summary-shaped records without requiring preview text", async () => {
+  const source = await readFile(SOURCE_PATH, "utf8");
+
+  assert.match(
+    source,
+    /function openConversation\(conversation: (?:Pick<ConversationSummaryRecord, 'id' \| 'title' \| 'updatedAt'>|ConversationSummaryRecord), options\?: \{ force\?: boolean \}\)/
+  );
+  assert.doesNotMatch(
+    source,
+    /function openConversation\(conversation: ConversationListItem, options\?: \{ force\?: boolean \}\)/
+  );
+});
