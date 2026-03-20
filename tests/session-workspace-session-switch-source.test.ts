@@ -30,7 +30,7 @@ test("session tabs shell keeps one mounted host per opened session and only hide
 
   assert.match(hostSource, /export default function SessionWorkspaceHost/);
   assert.match(hostSource, /data-session-host=\{sessionId\}/);
-  assert.match(hostSource, /className=\{hidden \? 'hidden' : 'flex min-h-0 flex-1'\}/);
+  assert.match(hostSource, /className=\{hidden \? 'hidden' : 'flex min-h-0 min-w-0 flex-1 overflow-hidden'\}/);
   assert.match(hostSource, /<SessionWorkspace hidden=\{hidden\} sessionId=\{sessionId\} \/>/);
 
   assert.match(workspaceSource, /sessionId: providedSessionId/);

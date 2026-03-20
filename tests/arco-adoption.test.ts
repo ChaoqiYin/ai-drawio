@@ -16,9 +16,10 @@ test("root layout enables Arco light mode", async () => {
   assert.match(source, /arco-theme="light"/);
 });
 
-test("session workspace uses inline utilities for page shell spacing", async () => {
+test("session workspace uses inline utility-driven flex shell classes", async () => {
   const source = await readFile(SESSION_SOURCE_PATH, "utf8");
 
-  assert.match(source, /flex flex-col h-full min-h-full p-\[18px\] lg:p-\[22px\]/);
+  assert.match(source, /const shellBodyClassName = 'min-h-0 min-w-0 flex flex-1 overflow-hidden gap-4 bg-transparent!';/);
+  assert.match(source, /const workspaceClassName = 'min-h-0 flex min-w-0 flex-1 flex-col gap-4 lg:gap-\[18px\] bg-transparent!';/);
   assert.doesNotMatch(source, /workspace-head/);
 });
