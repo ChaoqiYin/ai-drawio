@@ -5,15 +5,17 @@ import { readFile } from "node:fs/promises";
 import * as conversationStore from "../app/(internal)/_lib/conversation-store.ts";
 
 const SOURCE_PATH = new URL(
-  "../app/(internal)/_lib/conversation-store.ts",
+  "../app/(internal)/_lib/legacy-indexeddb-conversation-store.ts",
   import.meta.url
 );
 
 test("conversation store exports deletion helpers", () => {
   assert.equal(typeof conversationStore.deleteConversation, "function");
   assert.equal(typeof conversationStore.clearAllIndexedDbDatabases, "function");
+  assert.equal(typeof conversationStore.clearAllAppData, "function");
   assert.equal(typeof conversationStore.findConversationByTitle, "function");
   assert.equal(typeof conversationStore.hasConversation, "function");
+  assert.equal(typeof conversationStore.importLegacyIndexedDbConversations, "function");
   assert.equal(typeof conversationStore.touchConversationUpdatedAt, "function");
   assert.equal(typeof conversationStore.updateConversationTitle, "function");
   assert.equal(typeof conversationStore.subscribeConversationChanges, "function");

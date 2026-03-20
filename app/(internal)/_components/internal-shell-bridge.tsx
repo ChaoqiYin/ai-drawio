@@ -17,6 +17,7 @@ import {
   findConversationByTitle,
   getConversationById,
   hasConversation,
+  importLegacyIndexedDbConversations,
   listConversations
 } from "../_lib/conversation-store";
 
@@ -105,6 +106,10 @@ export default function InternalShellBridge() {
   useEffect(() => {
     const shellWindow = window as ShellWindow;
     const previousShell = shellWindow.__AI_DRAWIO_SHELL__;
+
+    void importLegacyIndexedDbConversations().catch(() => {
+      // Ignore one-time desktop migration failures and keep the shell available.
+    });
 
     shellWindow.__AI_DRAWIO_SHELL__ = {
       ...previousShell,

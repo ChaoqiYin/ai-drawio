@@ -1,3 +1,4 @@
+use crate::conversation_db::{self, ConversationDatabase, ConversationRecordRow};
 use crate::control_protocol::ControlError;
 use crate::webview_api::{eval_main_window_script_with_result, ScriptResultBridgeState};
 use serde::{Deserialize, Serialize};
@@ -27,7 +28,7 @@ pub struct ShellState {
     pub session_id: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionListEntry {
     pub id: String,
@@ -91,191 +92,120 @@ pub fn show_main_window(app: &AppHandle) -> Result<(), ControlError> {
 
 pub fn create_conversation(
     app: &AppHandle,
-    bridge_state: &ScriptResultBridgeState,
-    timeout: Duration,
+    _bridge_state: &ScriptResultBridgeState,
+    _timeout: Duration,
 ) -> Result<Value, ControlError> {
     show_main_window(app)?;
+    let connection = open_conversation_connection(app)?;
+    let conversation = conversation_db::create_conversation(&connection, "本地 AI 会话")
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error))?;
 
-    let started_at = Instant::now();
-    let poll_interval = Duration::from_millis(200);
-
-    while started_at.elapsed() < timeout {
-        let value = eval_main_window_script_with_result(
-            app,
-            bridge_state,
-            r#"
-return await window.__AI_DRAWIO_SHELL__?.conversationStore?.createConversation?.() ?? null;
-"#,
-            Duration::from_secs(2),
-        )
-        .map_err(|error| ControlError::new("APP_NOT_READY", error));
-
-        match value {
-            Ok(value) if !value.is_null() => return Ok(value),
-            Ok(_) | Err(_) => thread::sleep(poll_interval),
-        }
-    }
-
-    Err(ControlError::new(
-        "APP_NOT_READY",
-        "timed out while waiting for the conversation create bridge",
-    ))
+    Ok(json!({
+        "createdAt": conversation.created_at,
+        "href": build_session_route(&conversation.id),
+        "id": conversation.id,
+        "title": conversation.title,
+        "updatedAt": conversation.updated_at
+    }))
 }
 
-fn has_conversation(
-    app: &AppHandle,
-    bridge_state: &ScriptResultBridgeState,
-    session_id: &str,
-    timeout: Duration,
-) -> Result<bool, ControlError> {
-    let started_at = Instant::now();
-    let poll_interval = Duration::from_millis(200);
-    let session_id_json = serde_json::to_string(session_id)
-        .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
-
-    while started_at.elapsed() < timeout {
-        let value = eval_main_window_script_with_result(
-            app,
-            bridge_state,
-            &format!(
-                r#"
-return await window.__AI_DRAWIO_SHELL__?.conversationStore?.hasConversation?.({session_id_json}) ?? null;
-"#
-            ),
-            Duration::from_secs(2),
-        )
-        .map_err(|error| ControlError::new("APP_NOT_READY", error));
-
-        match value {
-            Ok(Value::Bool(exists)) => return Ok(exists),
-            Ok(_) | Err(_) => thread::sleep(poll_interval),
-        }
-    }
-
-    Err(ControlError::new(
-        "APP_NOT_READY",
-        "timed out while waiting for the conversation existence bridge",
-    ))
+fn open_conversation_connection(app: &AppHandle) -> Result<rusqlite::Connection, ControlError> {
+    app.state::<ConversationDatabase>()
+        .connection(app)
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error))
 }
 
-fn find_conversation_by_title(
-    app: &AppHandle,
-    bridge_state: &ScriptResultBridgeState,
-    title: &str,
-    timeout: Duration,
-) -> Result<Option<String>, ControlError> {
-    let started_at = Instant::now();
-    let poll_interval = Duration::from_millis(200);
-    let title_json = serde_json::to_string(title)
-        .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+fn has_conversation(app: &AppHandle, session_id: &str) -> Result<bool, ControlError> {
+    let connection = open_conversation_connection(app)?;
 
-    while started_at.elapsed() < timeout {
-        let value = eval_main_window_script_with_result(
-            app,
-            bridge_state,
-            &format!(
-                r#"
-return await window.__AI_DRAWIO_SHELL__?.conversationStore?.findConversationByTitle?.({title_json}) ?? null;
-"#
-            ),
-            Duration::from_secs(2),
-        )
-        .map_err(|error| ControlError::new("APP_NOT_READY", error));
+    conversation_db::has_conversation(&connection, session_id)
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error))
+}
 
-        match value {
-            Ok(Value::Object(result)) => {
-                let session_id = result
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_string);
+fn find_conversation_by_title(app: &AppHandle, title: &str) -> Result<Option<String>, ControlError> {
+    let connection = open_conversation_connection(app)?;
+    let summary = conversation_db::find_conversation_by_title(&connection, title)
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error))?;
 
-                return Ok(session_id);
-            }
-            Ok(Value::Null) => return Ok(None),
-            Ok(_) | Err(_) => thread::sleep(poll_interval),
-        }
-    }
+    Ok(summary.map(|item| item.id))
+}
 
-    Err(ControlError::new(
-        "APP_NOT_READY",
-        "timed out while waiting for the conversation title lookup bridge",
-    ))
+fn list_session_entries(
+    connection: &rusqlite::Connection,
+) -> Result<Vec<SessionListEntry>, ControlError> {
+    let page = conversation_db::list_conversation_summaries(connection, None, 1, u32::MAX)
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error))?;
+
+    Ok(page
+        .items
+        .into_iter()
+        .map(|item| SessionListEntry {
+            id: item.id,
+            title: item.title,
+        })
+        .collect())
+}
+
+fn conversation_to_value(conversation: ConversationRecordRow) -> Value {
+    json!({
+        "id": conversation.id,
+        "title": conversation.title,
+        "createdAt": conversation.created_at,
+        "updatedAt": conversation.updated_at,
+        "messages": conversation.messages.into_iter().map(|message| {
+            json!({
+                "id": message.id,
+                "role": message.role,
+                "content": message.content,
+                "createdAt": message.created_at
+            })
+        }).collect::<Vec<_>>(),
+        "canvasHistory": conversation.canvas_history.into_iter().map(|entry| {
+            let preview_pages = serde_json::from_str::<Value>(&entry.preview_pages_json)
+                .unwrap_or_else(|_| Value::Array(Vec::new()));
+            json!({
+                "id": entry.id,
+                "conversationId": entry.conversation_id,
+                "createdAt": entry.created_at,
+                "label": entry.label,
+                "previewPages": preview_pages,
+                "source": entry.source,
+                "xml": entry.xml,
+                "relatedMessageId": entry.related_message_id
+            })
+        }).collect::<Vec<_>>()
+    })
 }
 
 pub fn list_sessions(
     app: &AppHandle,
-    bridge_state: &ScriptResultBridgeState,
-    timeout: Duration,
+    _bridge_state: &ScriptResultBridgeState,
+    _timeout: Duration,
 ) -> Result<Vec<SessionListEntry>, ControlError> {
     show_main_window(app)?;
+    let connection = open_conversation_connection(app)?;
 
-    let started_at = Instant::now();
-    let poll_interval = Duration::from_millis(200);
-
-    while started_at.elapsed() < timeout {
-        let value = eval_main_window_script_with_result(
-            app,
-            bridge_state,
-            r#"
-return await window.__AI_DRAWIO_SHELL__?.conversationStore?.listConversations?.() ?? null;
-"#,
-            Duration::from_secs(2),
-        )
-        .map_err(|error| ControlError::new("APP_NOT_READY", error));
-
-        match value {
-            Ok(value @ Value::Array(_)) => {
-                return serde_json::from_value(value)
-                    .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()));
-            }
-            Ok(_) | Err(_) => thread::sleep(poll_interval),
-        }
-    }
-
-    Err(ControlError::new(
-        "APP_NOT_READY",
-        "timed out while waiting for the conversation list bridge",
-    ))
+    list_session_entries(&connection)
 }
 
 pub fn get_conversation(
     app: &AppHandle,
-    bridge_state: &ScriptResultBridgeState,
+    _bridge_state: &ScriptResultBridgeState,
     session_id: &str,
-    timeout: Duration,
+    _timeout: Duration,
 ) -> Result<Value, ControlError> {
     show_main_window(app)?;
+    let connection = open_conversation_connection(app)?;
+    let conversation = conversation_db::get_conversation_by_id(&connection, session_id)
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error))?
+        .ok_or_else(|| {
+            ControlError::new(
+                "SESSION_NOT_FOUND",
+                format!("session '{session_id}' was not found in local storage"),
+            )
+        })?;
 
-    let started_at = Instant::now();
-    let poll_interval = Duration::from_millis(200);
-    let session_id_json = serde_json::to_string(session_id)
-        .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
-
-    while started_at.elapsed() < timeout {
-        let value = eval_main_window_script_with_result(
-            app,
-            bridge_state,
-            &format!(
-                r#"
-return await window.__AI_DRAWIO_SHELL__?.conversationStore?.getConversation?.({session_id_json}) ?? null;
-"#
-            ),
-            Duration::from_secs(2),
-        )
-        .map_err(|error| ControlError::new("APP_NOT_READY", error));
-
-        match value {
-            Ok(value) if !value.is_null() => return Ok(value),
-            Ok(_) | Err(_) => thread::sleep(poll_interval),
-        }
-    }
-
-    Err(ControlError::new(
-        "APP_NOT_READY",
-        "timed out while waiting for the conversation get bridge",
-    ))
+    Ok(conversation_to_value(conversation))
 }
 
 pub fn get_conversation_by_title(
@@ -293,7 +223,7 @@ pub fn get_conversation_by_title(
         ));
     }
 
-    let session_id = find_conversation_by_title(app, bridge_state, normalized_title, timeout)?
+    let session_id = find_conversation_by_title(app, normalized_title)?
         .ok_or_else(|| {
             ControlError::new(
                 "SESSION_NOT_FOUND",
@@ -445,7 +375,7 @@ pub fn open_session(
         return Ok(state);
     }
 
-    if !has_conversation(app, bridge_state, session_id, timeout)? {
+    if !has_conversation(app, session_id)? {
         return Err(ControlError::new(
             "SESSION_NOT_FOUND",
             format!("session '{session_id}' was not found in local storage"),
@@ -475,7 +405,7 @@ pub fn open_session_by_title(
         ));
     }
 
-    let session_id = find_conversation_by_title(app, bridge_state, normalized_title, timeout)?
+    let session_id = find_conversation_by_title(app, normalized_title)?
         .ok_or_else(|| {
             ControlError::new(
                 "SESSION_NOT_FOUND",
@@ -578,8 +508,11 @@ fn wait_for_session_ready(
 mod tests {
     use super::{
         build_session_route, extract_session_id_from_route, get_active_session_id,
-        is_reusable_session_state, SessionRuntimeState, ShellState,
+        is_reusable_session_state, list_session_entries, SessionListEntry,
+        SessionRuntimeState, ShellState,
     };
+    use crate::conversation_db::{self, ConversationSummaryRow};
+    use rusqlite::Connection;
 
     #[test]
     fn builds_session_route() {
@@ -637,5 +570,77 @@ mod tests {
         };
 
         assert!(is_reusable_session_state(&state));
+    }
+
+    #[test]
+    fn list_session_entries_reads_sqlite_summaries_in_updated_order() {
+        let connection = Connection::open_in_memory().expect("in-memory sqlite should open");
+
+        conversation_db::insert_conversation_summary(
+            &connection,
+            &ConversationSummaryRow {
+                id: "session-1".to_string(),
+                title: "Alpha".to_string(),
+                created_at: "2026-03-20T10:00:00Z".to_string(),
+                updated_at: "2026-03-20T10:00:00Z".to_string(),
+            },
+        )
+        .expect("first conversation should insert");
+        conversation_db::insert_conversation_summary(
+            &connection,
+            &ConversationSummaryRow {
+                id: "session-2".to_string(),
+                title: "Beta".to_string(),
+                created_at: "2026-03-20T11:00:00Z".to_string(),
+                updated_at: "2026-03-20T12:00:00Z".to_string(),
+            },
+        )
+        .expect("second conversation should insert");
+
+        let entries = list_session_entries(&connection).expect("session entries should load");
+
+        assert_eq!(
+            entries,
+            vec![
+                SessionListEntry {
+                    id: "session-2".to_string(),
+                    title: "Beta".to_string(),
+                },
+                SessionListEntry {
+                    id: "session-1".to_string(),
+                    title: "Alpha".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn sqlite_title_lookup_is_case_insensitive() {
+        let connection = Connection::open_in_memory().expect("in-memory sqlite should open");
+
+        conversation_db::insert_conversation_summary(
+            &connection,
+            &ConversationSummaryRow {
+                id: "session-1".to_string(),
+                title: "Alpha Flow".to_string(),
+                created_at: "2026-03-20T10:00:00Z".to_string(),
+                updated_at: "2026-03-20T10:00:00Z".to_string(),
+            },
+        )
+        .expect("conversation should insert");
+
+        let summary = conversation_db::find_conversation_by_title(&connection, "alpha flow")
+            .expect("title lookup should succeed");
+
+        assert_eq!(summary.expect("title lookup should match").id, "session-1");
+    }
+
+    #[test]
+    fn sqlite_title_lookup_returns_none_for_missing_titles() {
+        let connection = Connection::open_in_memory().expect("in-memory sqlite should open");
+        let missing = conversation_db::find_conversation_by_title(&connection, "missing")
+            .expect("title lookup should succeed");
+
+        assert!(missing.is_none());
     }
 }

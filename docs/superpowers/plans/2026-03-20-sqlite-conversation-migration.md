@@ -466,4 +466,3 @@ git commit -m "chore: verify sqlite conversation storage migration"
   - Rust database and command modules
   - frontend store facade and import flow
   - homepage pagination/search UI and tests
-

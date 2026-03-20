@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod cli_schema;
+mod conversation_commands;
+mod conversation_db;
 mod control_protocol;
 mod control_server;
 mod document_bridge;
@@ -57,6 +59,7 @@ fn main() {
     }
 
     tauri::Builder::default()
+        .manage(conversation_db::ConversationDatabase::new())
         .manage(ScriptResultBridgeState::default())
         .manage(tray_settings::TrayRuntimeState::default())
         .setup(|app| {
@@ -81,6 +84,16 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             app_ready,
+            conversation_commands::append_canvas_history_entry,
+            conversation_commands::append_conversation_message,
+            conversation_commands::clear_conversation_data,
+            conversation_commands::create_conversation,
+            conversation_commands::delete_conversation,
+            conversation_commands::get_conversation,
+            conversation_commands::import_legacy_conversations,
+            conversation_commands::list_conversation_summaries,
+            conversation_commands::touch_conversation_updated_at,
+            conversation_commands::update_conversation_title,
             tray_settings::get_tray_settings,
             tray_settings::set_tray_enabled,
             call_page_method,
