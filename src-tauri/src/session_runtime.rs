@@ -91,24 +91,11 @@ fn is_reusable_session_state(state: &ShellState) -> bool {
     get_active_session_id(state).is_some() && state.bridge_ready && state.frame_ready
 }
 
-pub fn show_main_window(app: &AppHandle) -> Result<(), ControlError> {
-    let window = app
-        .get_webview_window(crate::webview_api::MAIN_WINDOW_LABEL)
-        .ok_or_else(|| ControlError::new("APP_NOT_RUNNING", "main window is not available"))?;
-
-    window
-        .show()
-        .map_err(|error| ControlError::new("APP_NOT_READY", error.to_string()))?;
-
-    Ok(())
-}
-
 pub fn create_conversation(
     app: &AppHandle,
     _bridge_state: &ScriptResultBridgeState,
     _timeout: Duration,
 ) -> Result<Value, ControlError> {
-    show_main_window(app)?;
     let connection = open_conversation_connection(app)?;
     let conversation = conversation_db::create_conversation(&connection, "本地 AI 会话")
         .map_err(|error| ControlError::new("INTERNAL_ERROR", error))?;
@@ -156,7 +143,6 @@ pub fn list_sessions(
     _bridge_state: &ScriptResultBridgeState,
     _timeout: Duration,
 ) -> Result<Vec<SessionListEntry>, ControlError> {
-    show_main_window(app)?;
     let connection = open_conversation_connection(app)?;
 
     list_session_entries(&connection)
@@ -270,8 +256,6 @@ pub fn open_session(
     timeout: Duration,
     activate: bool,
 ) -> Result<ShellState, ControlError> {
-    show_main_window(app)?;
-
     if !has_conversation(app, session_id)? {
         return Err(ControlError::new(
             "SESSION_NOT_FOUND",
@@ -305,8 +289,6 @@ pub fn close_session(
     session_id: &str,
     timeout: Duration,
 ) -> Result<SessionCloseResult, ControlError> {
-    show_main_window(app)?;
-
     if !has_conversation(app, session_id)? {
         return Err(ControlError::new(
             "SESSION_NOT_FOUND",

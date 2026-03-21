@@ -7,14 +7,18 @@ const SESSION_RUNTIME_SOURCE_PATH = new URL(
   import.meta.url
 );
 
-test("cli session runtime shows the main window without forcing focus", async () => {
+test("cli session runtime does not show the main window for session commands", async () => {
   const sessionRuntimeSource = await readFile(SESSION_RUNTIME_SOURCE_PATH, "utf8");
 
-  const showWindowFunction = sessionRuntimeSource.match(
-    /pub fn show_main_window\(app: &AppHandle\) -> Result<\(\), ControlError> \{[\s\S]*?\n\}/
+  const commandFunctions = sessionRuntimeSource.match(
+    /pub fn (create_conversation|list_sessions|open_session|close_session)\([\s\S]*?\n\}/g
   );
 
-  assert.ok(showWindowFunction, "expected a dedicated show_main_window helper");
-  assert.match(showWindowFunction[0], /\.show\(\)/);
-  assert.doesNotMatch(showWindowFunction[0], /\.set_focus\(\)/);
+  assert.ok(commandFunctions, "expected session runtime command functions");
+
+  for (const commandFunction of commandFunctions) {
+    assert.doesNotMatch(commandFunction, /show_main_window\(app\)\?/);
+    assert.doesNotMatch(commandFunction, /\.show\(\)/);
+    assert.doesNotMatch(commandFunction, /\.set_focus\(\)/);
+  }
 });
