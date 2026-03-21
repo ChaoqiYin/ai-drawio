@@ -18,6 +18,7 @@ Use this skill for draw.io work that must go through the installed `ai-drawio` C
 - Use only the packaged `ai-drawio` executable, not development wrappers such as `npm run cli`.
 - Do not execute any `ai-drawio` terminal command from this skill inside the default sandbox, including `status`, `session *`, and `canvas document.*`.
 - For existing sessions, use the exact `session-id` as a required positional argument.
+- If the user is continuing to modify a diagram from the same AI conversation, reuse the most recent session id from that conversation instead of creating a new one.
 - Use `session create` when the user needs a new ready session.
 - Launch the desktop app itself by executing the resolved packaged app path directly.
 - Every `canvas document.apply` command must include a required prompt argument with the user request summary.
@@ -65,7 +66,7 @@ Use this skill for draw.io work that must go through the installed `ai-drawio` C
 
 1. Pick the smallest command that can satisfy the request.
 2. Resolve the packaged executable path once and keep using that absolute path for the rest of the task.
-3. For an existing session, require the explicit `session-id`. For a new workspace, use `session create` and keep the returned `sessionId`.
+3. If the user is continuing work from the same AI conversation, reuse that conversation's most recent session id. Otherwise, for an existing session, require the explicit `session-id`. For a new workspace, use `session create` and keep the returned `sessionId`.
 4. If the chosen command returns `APP_NOT_RUNNING`, or an intentional `status` check reports `running: false`, execute the resolved packaged app path directly outside the sandbox and continue.
 5. Parallelize only across different session IDs. Keep same-session commands strictly serial.
 6. Read XML first only when the edit depends on the current document.

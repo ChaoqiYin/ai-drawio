@@ -51,6 +51,10 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
   assert.match(skillSource, /Every `canvas document\.apply` command must include a required prompt argument with the user request summary\./);
   assert.match(skillSource, /Do not generate a `\.drawio` file unless the user explicitly asked for file output or the XML payload is too large for a safe inline command\./);
   assert.match(skillSource, /Use `session create` when the user needs a new ready session\./);
+  assert.match(
+    skillSource,
+    /If the user is continuing to modify a diagram from the same AI conversation, reuse the most recent session id from that conversation instead of creating a new one\./
+  );
   assert.match(skillSource, /If this skill opens or creates a session for a bounded task, close that same session with `session close <session-id>` after the full task is complete, unless the user explicitly wants the session kept open\./);
   assert.match(skillSource, /Do not execute any `ai-drawio` terminal command from this skill inside the default sandbox, including `status`, `session \*`, and `canvas document\.\*`\./);
   assert.match(skillSource, /Commands for different session IDs may run in parallel\./);
@@ -92,6 +96,10 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
   assert.match(agentSource, /Launch the desktop app itself by executing the resolved packaged app path directly when needed\./);
   assert.doesNotMatch(agentSource, /ai-drawio open/);
   assert.match(agentSource, /Do not prefer `ai-drawio session list` when another command already satisfies the task\./);
+  assert.match(
+    agentSource,
+    /If the user is continuing a diagram edit from the same AI conversation, reuse that conversation's most recent session id instead of creating a new session/
+  );
   assert.match(agentSource, /If a command returns `APP_NOT_RUNNING`, or `ai-drawio status` reports `running: false`, execute the resolved packaged app path directly outside the sandbox and then continue with the original task instead of asking the user to launch the app manually/);
   assert.match(agentSource, /After a bounded task is fully complete, close the corresponding task session with `ai-drawio session close <session-id>` unless the user explicitly wants that session kept open\./);
   assert.match(agentSource, /Use `ai-drawio canvas document\.preview <session-id>` for PNG preview export tasks/);
