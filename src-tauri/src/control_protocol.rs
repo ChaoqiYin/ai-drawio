@@ -6,8 +6,6 @@ pub const DEFAULT_TIMEOUT_MS: u64 = 15_000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandKind {
     ConversationCreate,
-    SessionEnsure,
-    SessionGet,
     SessionList,
     SessionOpen,
     Status,
@@ -71,8 +69,6 @@ impl ControlRequest {
             "canvas.document.restore" => Ok(CommandKind::CanvasDocumentRestore),
             "canvas.document.svg" => Ok(CommandKind::CanvasDocumentSvg),
             "conversation.create" => Ok(CommandKind::ConversationCreate),
-            "session.ensure" => Ok(CommandKind::SessionEnsure),
-            "session.get" => Ok(CommandKind::SessionGet),
             "session.list" => Ok(CommandKind::SessionList),
             "session.open" => Ok(CommandKind::SessionOpen),
             "status" => Ok(CommandKind::Status),
@@ -188,23 +184,10 @@ impl ControlRequest {
             }
             CommandKind::CanvasDocumentGet
             | CommandKind::CanvasDocumentSvg
-            | CommandKind::SessionGet
             | CommandKind::SessionOpen => {
-                let has_title = self
-                    .payload
-                    .get("title")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .is_some_and(|value| !value.is_empty());
-
-                if !has_title {
-                    self.require_session_id()?;
-                }
+                self.require_session_id()?;
             }
-            CommandKind::ConversationCreate
-            | CommandKind::SessionEnsure
-            | CommandKind::SessionList
-            | CommandKind::Status => {}
+            CommandKind::ConversationCreate | CommandKind::SessionList | CommandKind::Status => {}
         }
 
         Ok(command_kind)
@@ -391,12 +374,13 @@ mod tests {
     }
 
     #[test]
-    fn validates_session_ensure_requests() {
+    fn rejects_session_ensure_requests() {
         let request = base_request("session.ensure");
+        let error = request
+            .validate()
+            .expect_err("session ensure should be unsupported");
 
-        let command = request.validate().expect("request should validate");
-
-        assert_eq!(command, CommandKind::SessionEnsure);
+        assert_eq!(error.code, "UNSUPPORTED_COMMAND");
     }
 
     #[test]
@@ -409,12 +393,13 @@ mod tests {
     }
 
     #[test]
-    fn validates_session_get_requests() {
+    fn rejects_session_get_requests() {
         let mut request = base_request("session.get");
         request.session_id = Some("sess-1".to_string());
+        let error = request
+            .validate()
+            .expect_err("session get should be unsupported");
 
-        let command = request.validate().expect("request should validate");
-
-        assert_eq!(command, CommandKind::SessionGet);
+        assert_eq!(error.code, "UNSUPPORTED_COMMAND");
     }
 }

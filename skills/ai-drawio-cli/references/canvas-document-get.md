@@ -5,13 +5,13 @@ Use this as the default entry point when you need the current XML before editing
 ## Command
 
 ```bash
-ai-drawio canvas document.get sess-123
+"$AI_DRAWIO_BIN" canvas document.get sess-123
 ```
 
 ## Optional Output
 
 ```bash
-ai-drawio canvas document.get sess-123 --output-file ./current.xml
+"$AI_DRAWIO_BIN" canvas document.get sess-123 --output-file ./current.xml
 ```
 
 - Every get command must include the target session id as the first positional argument.

@@ -5,13 +5,13 @@ Use this when the task is to inspect or export the current document as SVG pages
 ## Command
 
 ```bash
-ai-drawio canvas document.svg sess-123
+"$AI_DRAWIO_BIN" canvas document.svg sess-123
 ```
 
 ## Optional Output
 
 ```bash
-ai-drawio canvas document.svg sess-123 --output-file ./exports
+"$AI_DRAWIO_BIN" canvas document.svg sess-123 --output-file ./exports
 ```
 
 - Every svg command must include the target session id as the first positional argument.

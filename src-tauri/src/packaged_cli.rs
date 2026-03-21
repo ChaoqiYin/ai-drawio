@@ -6,44 +6,25 @@ use clap::ArgMatches;
 use serde_json::{json, Map, Value};
 use std::env;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
+use std::path::Path;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+#[cfg(test)]
+use std::time::Instant;
 
 const CLI_SOURCE_NAME: &str = "ai-drawio";
 const CONTROL_TIMEOUT_MS: u64 = 20_000;
+const SESSION_CREATE_TIMEOUT_MS: u64 = 60_000;
+const SESSION_CREATE_OPEN_TIMEOUT_MS: u64 = 10_000;
 const STATUS_TIMEOUT_MS: u64 = 5_000;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OpenMode {
-    Tray,
-    Window,
-}
-
-impl OpenMode {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Tray => "tray",
-            Self::Window => "window",
-        }
-    }
-
-    fn parse(value: &str) -> Result<Self, String> {
-        match value.trim() {
-            "tray" => Ok(Self::Tray),
-            "window" => Ok(Self::Window),
-            other => Err(format!("unsupported open mode '{other}'")),
-        }
-    }
-}
+const CONTROL_SOCKET_TIMEOUT_GRACE_MS: u64 = 2_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackagedCliCommand {
-    Open {
-        mode: OpenMode,
-    },
     Status {
         session_id: String,
     },
@@ -140,9 +121,6 @@ pub fn parse_cli_args_from_strings(args: &[String]) -> Result<PackagedCliCommand
 
 fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
     match matches.subcommand() {
-        Some(("open", open_matches)) => Ok(PackagedCliCommand::Open {
-            mode: parse_open_mode(open_matches)?,
-        }),
         Some(("status", _)) => Ok(PackagedCliCommand::Status {
             session_id: String::new(),
         }),
@@ -223,9 +201,6 @@ pub fn build_request_for_command(
     session_id: Option<String>,
 ) -> Result<ControlRequest, String> {
     match command {
-        PackagedCliCommand::Open { .. } => {
-            Err("open does not map to a control request".to_string())
-        }
         PackagedCliCommand::Status { session_id } => Ok(build_request(
             "status",
             {
@@ -360,22 +335,63 @@ pub fn build_request_for_command(
 }
 
 pub fn execute_cli(command: &PackagedCliCommand) -> Result<ControlResponse, String> {
-    if let PackagedCliCommand::Open { mode } = command {
-        return execute_open_command(*mode);
-    }
-
     if !requires_running_app(command) {
-        return Ok(match send_status_request(status_request_session_id(command)) {
-            Ok(mut response) => {
-                trim_status_response_data(command, &mut response)?;
+        let requested_session_id = status_request_session_id(command);
+        cli_debug_log(format!(
+            "status start session_id={:?} exe={}",
+            requested_session_id,
+            std::env::current_exe()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|error| format!("<current_exe_error:{error}>"))
+        ));
+        let mut response = match send_status_request(requested_session_id) {
+            Ok(response) => {
+                cli_debug_log(format!(
+                    "status primary ok session_id={:?} running={:?} command={}",
+                    requested_session_id,
+                    response
+                        .data
+                        .as_ref()
+                        .and_then(|value| value.get("running"))
+                        .and_then(Value::as_bool),
+                    response.command
+                ));
                 response
             }
-            Err(_) => {
-                let mut response = build_status_not_running_response(status_request_session_id(command));
-                trim_status_response_data(command, &mut response)?;
-                response
+            Err(primary_error) => {
+                cli_debug_log(format!(
+                    "status primary err session_id={:?} error={primary_error}",
+                    requested_session_id
+                ));
+                if requested_session_id.is_some() {
+                    match send_status_request(None) {
+                        Ok(response) => {
+                            cli_debug_log("status fallback ok session_id=None".to_string());
+                            response
+                        }
+                        Err(error) => {
+                            cli_debug_log(format!(
+                                "status fallback err session_id=None error={error}"
+                            ));
+                            build_control_unreachable_response(
+                                command_name(command),
+                                requested_session_id,
+                                &format!("{primary_error}; {error}"),
+                            )
+                        }
+                    }
+                } else {
+                    build_control_unreachable_response(
+                        command_name(command),
+                        None,
+                        &primary_error,
+                    )
+                }
             }
-        });
+        };
+
+        trim_status_response_data(command, &mut response)?;
+        return Ok(response);
     }
 
     if send_status_request(None).is_err() {
@@ -406,78 +422,27 @@ pub fn execute_cli(command: &PackagedCliCommand) -> Result<ControlResponse, Stri
 }
 
 fn requires_running_app(command: &PackagedCliCommand) -> bool {
-    !matches!(
-        command,
-        PackagedCliCommand::Status { .. } | PackagedCliCommand::Open { .. }
-    )
+    !matches!(command, PackagedCliCommand::Status { .. })
 }
 
 fn execute_session_create() -> Result<ControlResponse, String> {
-    let create_request = build_request("conversation.create", None, json!({}), CONTROL_TIMEOUT_MS);
-    let create_response = send_control_request(&create_request)?;
+    let create_response = send_control_request(&build_session_create_request())?;
 
     if !create_response.ok {
         return Ok(relabel_response_command(create_response, "session.create"));
     }
 
     let session_id = extract_created_session_id(&create_response)?;
-    let open_request = build_request(
-        "session.open",
-        Some(session_id),
-        json!({}),
-        CONTROL_TIMEOUT_MS,
-    );
-    let open_response = send_control_request(&open_request)?;
+    let open_response = send_control_request(&build_session_create_open_request(session_id.clone()))?;
 
-    Ok(relabel_response_command(open_response, "session.create"))
-}
-
-fn execute_open_command(mode: OpenMode) -> Result<ControlResponse, String> {
-    if let Ok(response) = send_status_request(None) {
-        let running = response
-            .data
-            .as_ref()
-            .and_then(|value| value.get("running"))
-            .and_then(Value::as_bool)
-            .unwrap_or(response.ok);
-
-        if running {
-            return Ok(build_success_response(
-                "open",
-                json!({
-                    "launched": false,
-                    "mode": mode.as_str(),
-                    "running": true
-                }),
-            ));
-        }
+    if !open_response.ok {
+        return Ok(relabel_response_command(open_response, "session.create"));
     }
 
-    launch_desktop_app(mode)?;
+    let mut response = relabel_response_command(create_response, "session.create");
+    response.session_id = Some(session_id);
 
-    Ok(build_success_response(
-        "open",
-        json!({
-            "launched": true,
-            "mode": mode.as_str(),
-            "running": false
-        }),
-    ))
-}
-
-fn launch_desktop_app(mode: OpenMode) -> Result<(), String> {
-    let current_exe = std::env::current_exe()
-        .map_err(|error| format!("failed to resolve current executable: {error}"))?;
-
-    Command::new(current_exe)
-        .env(crate::tray_settings::STARTUP_MODE_ENV_VAR, mode.as_str())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|error| format!("failed to launch AI Drawio: {error}"))?;
-
-    Ok(())
+    Ok(response)
 }
 
 fn send_status_request(session_id: Option<&str>) -> Result<ControlResponse, String> {
@@ -489,6 +454,121 @@ fn send_status_request(session_id: Option<&str>) -> Result<ControlResponse, Stri
     ))
 }
 
+fn build_session_create_request() -> ControlRequest {
+    build_request(
+        "conversation.create",
+        None,
+        json!({}),
+        SESSION_CREATE_TIMEOUT_MS,
+    )
+}
+
+fn build_session_create_open_request(session_id: String) -> ControlRequest {
+    build_request(
+        "session.open",
+        Some(session_id),
+        json!({
+            "activate": false
+        }),
+        SESSION_CREATE_OPEN_TIMEOUT_MS,
+    )
+}
+
+#[cfg(test)]
+fn wait_for_created_session_ready_with<F>(
+    session_id: &str,
+    timeout: Duration,
+    poll_interval: Duration,
+    mut open_session: F,
+) -> Result<ControlResponse, String>
+where
+    F: FnMut(&str) -> Result<ControlResponse, String>,
+{
+    let started_at = Instant::now();
+    let mut last_error: Option<String> = None;
+    let mut last_response: Option<ControlResponse> = None;
+
+    while started_at.elapsed() < timeout {
+        match open_session(session_id) {
+            Ok(response) if response.ok => return Ok(response),
+            Ok(response) => {
+                let retryable = response
+                    .error
+                    .as_ref()
+                    .map(|error| {
+                        matches!(
+                            error.code.as_str(),
+                            "APP_NOT_READY" | "COMMAND_TIMEOUT" | "SESSION_NOT_READY"
+                        )
+                    })
+                    .unwrap_or(false);
+
+                if !retryable {
+                    return Ok(response);
+                }
+
+                last_response = Some(response);
+            }
+            Err(error) => last_error = Some(error),
+        }
+
+        std::thread::sleep(poll_interval);
+    }
+
+    if let Some(response) = last_response {
+        return Ok(response);
+    }
+
+    let detail = last_error
+        .map(|error| format!(": {error}"))
+        .unwrap_or_default();
+
+    Err(format!(
+        "timed out while waiting for session '{session_id}' to become ready{detail}"
+    ))
+}
+
+fn response_indicates_running(response: &ControlResponse) -> bool {
+    response
+        .data
+        .as_ref()
+        .and_then(|value| value.get("running"))
+        .and_then(Value::as_bool)
+        .unwrap_or(response.ok)
+}
+
+#[cfg(test)]
+fn wait_for_app_running_with<F>(
+    timeout: Duration,
+    poll_interval: Duration,
+    mut poll_status: F,
+) -> Result<(), String>
+where
+    F: FnMut() -> Result<ControlResponse, String>,
+{
+    let started_at = Instant::now();
+    let mut last_error: Option<String> = None;
+
+    while started_at.elapsed() < timeout {
+        match poll_status() {
+            Ok(response) if response_indicates_running(&response) => return Ok(()),
+            Ok(_) => {}
+            Err(error) => last_error = Some(error),
+        }
+
+        std::thread::sleep(poll_interval);
+    }
+
+    let detail = last_error
+        .map(|error| format!(": {error}"))
+        .unwrap_or_default();
+
+    Err(format!(
+        "timed out while waiting for AI Drawio to finish starting{detail}"
+    ))
+}
+
+#[cfg(test)]
 fn build_status_not_running_response(session_id: Option<&str>) -> ControlResponse {
     let session = session_id.map(|session_id| {
         json!({
@@ -508,6 +588,43 @@ fn build_status_not_running_response(session_id: Option<&str>) -> ControlRespons
         })),
         error: None,
         ok: true,
+        request_id: next_request_id(),
+        session_id: session_id.map(str::to_string),
+    }
+}
+
+fn build_control_unreachable_response(
+    command: &str,
+    session_id: Option<&str>,
+    cause: &str,
+) -> ControlResponse {
+    let session = session_id.map(|session_id| {
+        json!({
+            "isReady": false,
+            "sessionId": session_id,
+            "status": "unavailable"
+        })
+    });
+
+    ControlResponse {
+        command: command.to_string(),
+        data: Some(json!({
+            "address": crate::control_server::CONTROL_ADDR,
+            "running": false,
+            "session": session,
+            "shell": null,
+            "socketPath": control_socket_path_json_value()
+        })),
+        error: Some(
+            ControlError::new(
+                "CONTROL_UNREACHABLE",
+                "AI Drawio control channel is unreachable.",
+            )
+            .with_details(json!({
+                "cause": cause
+            })),
+        ),
+        ok: false,
         request_id: next_request_id(),
         session_id: session_id.map(str::to_string),
     }
@@ -542,12 +659,45 @@ fn trim_status_response_data(
         .as_ref()
         .and_then(|value| value.get("session"))
         .cloned()
-        .ok_or_else(|| "status response is missing session data".to_string())?;
+        .filter(|value| !value.is_null())
+        .unwrap_or_else(|| synthesize_session_status_data(response, session_id));
 
     response.data = Some(session);
     response.session_id = Some(session_id.to_string());
 
     Ok(())
+}
+
+fn synthesize_session_status_data(response: &ControlResponse, session_id: &str) -> Value {
+    if response
+        .error
+        .as_ref()
+        .is_some_and(|error| error.code == "CONTROL_UNREACHABLE")
+    {
+        return json!({
+            "isReady": false,
+            "sessionId": session_id,
+            "status": "unavailable"
+        });
+    }
+
+    let running = response
+        .data
+        .as_ref()
+        .and_then(|value| value.get("running"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let status = if running {
+        "unavailable"
+    } else {
+        "app-not-running"
+    };
+
+    json!({
+        "isReady": false,
+        "sessionId": session_id,
+        "status": status
+    })
 }
 
 fn build_app_not_running_response(command: &str) -> ControlResponse {
@@ -568,11 +718,87 @@ fn build_app_not_running_response(command: &str) -> ControlResponse {
 }
 
 fn send_control_request(request: &ControlRequest) -> Result<ControlResponse, String> {
-    let mut stream = TcpStream::connect(crate::control_server::CONTROL_ADDR)
-        .map_err(|error| format!("failed to connect to control server: {error}"))?;
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+    #[cfg(unix)]
+    {
+        let socket_path = crate::control_server::control_socket_path();
+        let mut errors = Vec::new();
 
+        match send_control_request_via_unix_socket(request, &socket_path) {
+            Ok(response) => return Ok(response),
+            Err(error) => errors.push(error),
+        }
+
+        match send_control_request_via_tcp(request) {
+            Ok(response) => return Ok(response),
+            Err(error) => errors.push(error),
+        }
+
+        return Err(errors.join(" | "));
+    }
+
+    #[cfg(not(unix))]
+    {
+        send_control_request_via_tcp(request)
+    }
+}
+
+#[cfg(unix)]
+fn send_control_request_via_unix_socket(
+    request: &ControlRequest,
+    socket_path: &Path,
+) -> Result<ControlResponse, String> {
+    cli_debug_log(format!(
+        "send_control_request unix command={} session_id={:?} timeout_ms={} socket_path={}",
+        request.command,
+        request.session_id,
+        request.timeout_ms,
+        socket_path.display()
+    ));
+    let stream = UnixStream::connect(socket_path).map_err(|error| {
+        let message = format!(
+            "failed to connect to control socket '{}': {error}",
+            socket_path.display()
+        );
+        cli_debug_log(format!(
+            "send_control_request unix_connect_err command={} session_id={:?} error={message}",
+            request.command, request.session_id
+        ));
+        message
+    })?;
+    let io_timeout = control_request_io_timeout(request);
+    let _ = stream.set_read_timeout(Some(io_timeout));
+    let _ = stream.set_write_timeout(Some(io_timeout));
+
+    send_control_request_over_stream(stream, request)
+}
+
+fn send_control_request_via_tcp(request: &ControlRequest) -> Result<ControlResponse, String> {
+    cli_debug_log(format!(
+        "send_control_request tcp command={} session_id={:?} timeout_ms={}",
+        request.command, request.session_id, request.timeout_ms
+    ));
+    let stream = TcpStream::connect(crate::control_server::CONTROL_ADDR).map_err(|error| {
+        let message = format!("failed to connect to control server: {error}");
+        cli_debug_log(format!(
+            "send_control_request tcp_connect_err command={} session_id={:?} error={message}",
+            request.command, request.session_id
+        ));
+        message
+    })?;
+    let io_timeout = control_request_io_timeout(request);
+    let _ = stream.set_read_timeout(Some(io_timeout));
+    let _ = stream.set_write_timeout(Some(io_timeout));
+
+    send_control_request_over_stream(stream, request)
+}
+
+fn send_control_request_over_stream<S>(
+    mut stream: S,
+    request: &ControlRequest,
+) -> Result<ControlResponse, String>
+where
+    S: Read + Write,
+{
     let body = serde_json::to_vec(request)
         .map_err(|error| format!("failed to serialize control request: {error}"))?;
     let http_request = format!(
@@ -583,25 +809,138 @@ fn send_control_request(request: &ControlRequest) -> Result<ControlResponse, Str
     stream
         .write_all(http_request.as_bytes())
         .and_then(|_| stream.write_all(&body))
-        .map_err(|error| format!("failed to write control request: {error}"))?;
+        .map_err(|error| {
+            let message = format!("failed to write control request: {error}");
+            cli_debug_log(format!(
+                "send_control_request write_err command={} session_id={:?} error={message}",
+                request.command, request.session_id
+            ));
+            message
+        })?;
 
-    let mut response_bytes = Vec::new();
-    stream
-        .read_to_end(&mut response_bytes)
-        .map_err(|error| format!("failed to read control response: {error}"))?;
-
-    let body = split_http_body(&response_bytes)
-        .ok_or_else(|| "control server returned an invalid HTTP response".to_string())?;
-
-    serde_json::from_slice(body)
-        .map_err(|error| format!("failed to parse control response JSON: {error}"))
+    let response_body = read_control_response_body(stream).map_err(|error| {
+        cli_debug_log(format!(
+            "send_control_request read_err command={} session_id={:?} error={error}",
+            request.command, request.session_id
+        ));
+        error
+    })?;
+    serde_json::from_slice(&response_body).map_err(|error| {
+        let message = format!("failed to parse control response JSON: {error}");
+        cli_debug_log(format!(
+            "send_control_request parse_err command={} session_id={:?} error={message}",
+            request.command, request.session_id
+        ));
+        message
+    })
 }
 
+fn cli_debug_log(message: String) {
+    let Some(path) = env::var_os("AI_DRAWIO_CLI_DEBUG_FILE") else {
+        return;
+    };
+
+    let line = format!("{message}\n");
+    let _ = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut file| file.write_all(line.as_bytes()));
+}
+
+fn control_request_io_timeout(request: &ControlRequest) -> Duration {
+    Duration::from_millis(
+        request
+            .validated_timeout_ms()
+            .saturating_add(CONTROL_SOCKET_TIMEOUT_GRACE_MS),
+    )
+}
+
+fn control_socket_path_json_value() -> Value {
+    #[cfg(unix)]
+    {
+        return Value::String(crate::control_server::control_socket_path().display().to_string());
+    }
+
+    #[cfg(not(unix))]
+    {
+        Value::Null
+    }
+}
+
+#[cfg(test)]
 fn split_http_body(response: &[u8]) -> Option<&[u8]> {
     response
         .windows(4)
         .position(|window| window == b"\r\n\r\n")
         .map(|index| &response[index + 4..])
+}
+
+fn read_control_response_body<S>(stream: S) -> Result<Vec<u8>, String>
+where
+    S: Read,
+{
+    let mut reader = BufReader::new(stream);
+    let mut status_line = String::new();
+
+    reader
+        .read_line(&mut status_line)
+        .map_err(|error| format!("failed to read control response status line: {error}"))?;
+
+    if status_line.trim().is_empty() {
+        return Err("control server returned an empty HTTP response".to_string());
+    }
+
+    let mut content_length = None;
+
+    loop {
+        let mut line = String::new();
+        reader
+            .read_line(&mut line)
+            .map_err(|error| format!("failed to read control response headers: {error}"))?;
+
+        if line == "\r\n" || line.is_empty() {
+            break;
+        }
+
+        if let Some(value) = line.strip_prefix("Content-Length:") {
+            let parsed = value
+                .trim()
+                .parse::<usize>()
+                .map_err(|error| format!("invalid control response Content-Length header: {error}"))?;
+            content_length = Some(parsed);
+        }
+    }
+
+    let content_length = content_length
+        .ok_or_else(|| "control server response is missing Content-Length".to_string())?;
+    let mut body = vec![0u8; content_length];
+    reader
+        .read_exact(&mut body)
+        .map_err(|error| format!("failed to read control response body: {error}"))?;
+
+    Ok(body)
+}
+
+#[cfg(test)]
+fn can_recover_control_response_after_read_error(
+    error: &std::io::Error,
+    response_bytes: &[u8],
+) -> bool {
+    !response_bytes.is_empty()
+        && matches!(
+            error.kind(),
+            std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+        )
+}
+
+#[cfg(test)]
+fn parse_control_response_bytes(response_bytes: &[u8]) -> Result<ControlResponse, String> {
+    let body = split_http_body(response_bytes)
+        .ok_or_else(|| "control server returned an invalid HTTP response".to_string())?;
+
+    serde_json::from_slice(body)
+        .map_err(|error| format!("failed to parse control response JSON: {error}"))
 }
 
 fn extract_resolved_session_id(response: &ControlResponse) -> Result<String, String> {
@@ -952,20 +1291,8 @@ fn build_request(
     }
 }
 
-fn build_success_response(command: &str, data: Value) -> ControlResponse {
-    ControlResponse {
-        command: command.to_string(),
-        data: Some(data),
-        error: None,
-        ok: true,
-        request_id: next_request_id(),
-        session_id: None,
-    }
-}
-
 fn command_name(command: &PackagedCliCommand) -> &'static str {
     match command {
-        PackagedCliCommand::Open { .. } => "open",
         PackagedCliCommand::Status { .. } => "status",
         PackagedCliCommand::SessionCreate => "session.create",
         PackagedCliCommand::SessionList => "session.list",
@@ -1023,14 +1350,6 @@ fn string_arg(matches: &ArgMatches, name: &str) -> Option<String> {
     matches.get_one::<String>(name).cloned()
 }
 
-fn parse_open_mode(matches: &ArgMatches) -> Result<OpenMode, String> {
-    OpenMode::parse(
-        string_arg(matches, "mode")
-            .unwrap_or_else(|| OpenMode::Tray.as_str().to_string())
-            .as_str(),
-    )
-}
-
 fn required_string_arg(matches: &ArgMatches, name: &str) -> Result<String, String> {
     string_arg(matches, name).ok_or_else(|| format!("missing required argument '{name}'"))
 }
@@ -1055,14 +1374,18 @@ fn optional_positive_usize_arg(matches: &ArgMatches, name: &str) -> Result<Optio
 mod tests {
     use super::{
         build_app_not_running_response, build_request_for_command, build_resolution_request,
-        build_status_not_running_response, maybe_write_output_file, parse_cli_args,
-        requires_running_app, should_run_cli_from_args, trim_status_response_data, OpenMode,
-        PackagedCliCommand,
+        build_session_create_open_request, build_session_create_request,
+        build_status_not_running_response, can_recover_control_response_after_read_error,
+        control_request_io_timeout, maybe_write_output_file, parse_cli_args,
+        parse_control_response_bytes, requires_running_app, response_indicates_running,
+        should_run_cli_from_args, trim_status_response_data, wait_for_app_running_with,
+        wait_for_created_session_ready_with, PackagedCliCommand,
     };
-    use crate::control_protocol::ControlResponse;
+    use crate::control_protocol::{ControlError, ControlRequest, ControlResponse};
     use serde_json::json;
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::io::ErrorKind;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[test]
     fn parses_session_open_with_positional_session_id() {
@@ -1121,28 +1444,45 @@ mod tests {
     }
 
     #[test]
-    fn parses_open_command_with_default_tray_mode() {
-        let command = parse_cli_args(&["open"]).expect("open command should parse");
+    fn rejects_top_level_open_command() {
+        let error = parse_cli_args(&["open"]).expect_err("open command should no longer parse");
 
-        assert_eq!(
-            command,
-            PackagedCliCommand::Open {
-                mode: OpenMode::Tray
-            }
+        assert!(
+            error.contains("open") || error.contains("subcommand") || error.contains("usage"),
+            "unexpected error: {error}"
         );
     }
 
     #[test]
-    fn parses_open_command_with_explicit_window_mode() {
-        let command =
-            parse_cli_args(&["open", "--mode", "window"]).expect("open command should parse");
+    fn response_indicates_running_uses_explicit_running_flag() {
+        let response = ControlResponse {
+            command: "status".to_string(),
+            data: Some(json!({
+                "running": true
+            })),
+            error: None,
+            ok: true,
+            request_id: "req-running".to_string(),
+            session_id: None,
+        };
 
-        assert_eq!(
-            command,
-            PackagedCliCommand::Open {
-                mode: OpenMode::Window
-            }
-        );
+        assert!(response_indicates_running(&response));
+    }
+
+    #[test]
+    fn response_indicates_running_defaults_to_ok_without_running_field() {
+        let response = ControlResponse {
+            command: "status".to_string(),
+            data: Some(json!({
+                "address": "127.0.0.1:47831"
+            })),
+            error: None,
+            ok: true,
+            request_id: "req-fallback".to_string(),
+            session_id: None,
+        };
+
+        assert!(response_indicates_running(&response));
     }
 
     #[test]
@@ -1578,6 +1918,194 @@ mod tests {
     }
 
     #[test]
+    fn control_request_io_timeout_tracks_validated_timeout() {
+        let request = ControlRequest {
+            command: "status".to_string(),
+            payload: json!({}),
+            request_id: "req-timeout".to_string(),
+            session_id: None,
+            source: None,
+            timeout_ms: 500,
+        };
+
+        assert_eq!(
+            control_request_io_timeout(&request),
+            Duration::from_millis(3_000)
+        );
+
+        let long_request = ControlRequest {
+            timeout_ms: 999_999,
+            ..request
+        };
+
+        assert_eq!(
+            control_request_io_timeout(&long_request),
+            Duration::from_millis(122_000)
+        );
+    }
+
+    #[test]
+    fn session_create_requests_use_the_extended_timeout_budget() {
+        let create_request = build_session_create_request();
+        assert_eq!(create_request.command, "conversation.create");
+        assert_eq!(create_request.timeout_ms, 60_000);
+        assert_eq!(create_request.session_id, None);
+
+        let open_request = build_session_create_open_request("sess-created".to_string());
+        assert_eq!(open_request.command, "session.open");
+        assert_eq!(open_request.timeout_ms, 10_000);
+        assert_eq!(open_request.session_id.as_deref(), Some("sess-created"));
+    }
+
+    #[test]
+    fn wait_for_created_session_ready_with_retries_until_success() {
+        let mut attempts = 0usize;
+
+        let response = wait_for_created_session_ready_with(
+            "sess-created",
+            Duration::from_millis(20),
+            Duration::from_millis(0),
+            |_| {
+                attempts += 1;
+
+                match attempts {
+                    1 => Err("failed to read control response: Resource temporarily unavailable (os error 35)".to_string()),
+                    2 => Ok(ControlResponse {
+                        command: "session.open".to_string(),
+                        data: None,
+                        error: Some(ControlError::new(
+                            "COMMAND_TIMEOUT",
+                            "timed out while opening session",
+                        )),
+                        ok: false,
+                        request_id: "req-timeout".to_string(),
+                        session_id: Some("sess-created".to_string()),
+                    }),
+                    _ => Ok(ControlResponse {
+                        command: "session.open".to_string(),
+                        data: Some(json!({
+                            "sessionId": "sess-created",
+                            "bridgeReady": true,
+                            "frameReady": true
+                        })),
+                        error: None,
+                        ok: true,
+                        request_id: "req-ok".to_string(),
+                        session_id: Some("sess-created".to_string()),
+                    }),
+                }
+            },
+        )
+        .expect("session create should keep retrying until session open succeeds");
+
+        assert!(response.ok);
+        assert_eq!(attempts, 3);
+    }
+
+    #[test]
+    fn wait_for_created_session_ready_with_returns_non_retryable_response_immediately() {
+        let response = wait_for_created_session_ready_with(
+            "missing-session",
+            Duration::from_millis(20),
+            Duration::from_millis(0),
+            |_| {
+                Ok(ControlResponse {
+                    command: "session.open".to_string(),
+                    data: None,
+                    error: Some(ControlError::new(
+                        "SESSION_NOT_FOUND",
+                        "session was not found",
+                    )),
+                    ok: false,
+                    request_id: "req-missing".to_string(),
+                    session_id: Some("missing-session".to_string()),
+                })
+            },
+        )
+        .expect("non-retryable responses should be returned");
+
+        assert!(!response.ok);
+        assert_eq!(
+            response.error.as_ref().map(|error| error.code.as_str()),
+            Some("SESSION_NOT_FOUND")
+        );
+    }
+
+    #[test]
+    fn wait_for_app_running_with_polls_until_status_reports_running() {
+        let mut attempts = 0usize;
+
+        wait_for_app_running_with(
+            Duration::from_millis(20),
+            Duration::from_millis(0),
+            || {
+                attempts += 1;
+
+                Ok(ControlResponse {
+                    command: "status".to_string(),
+                    data: Some(json!({
+                        "running": attempts >= 3
+                    })),
+                    error: None,
+                    ok: true,
+                    request_id: format!("req-{attempts}"),
+                    session_id: None,
+                })
+            },
+        )
+        .expect("running status should eventually succeed");
+
+        assert_eq!(attempts, 3);
+    }
+
+    #[test]
+    fn wait_for_app_running_with_reports_timeout_after_last_error() {
+        let error = wait_for_app_running_with(
+            Duration::from_millis(1),
+            Duration::from_millis(0),
+            || Err("failed to connect to control server: Connection refused".to_string()),
+        )
+        .expect_err("startup wait should time out");
+
+        assert!(error.contains("timed out while waiting for AI Drawio to finish starting"));
+        assert!(error.contains("failed to connect to control server"));
+    }
+
+    #[test]
+    fn can_recover_control_response_after_timeout_with_partial_bytes() {
+        let timed_out = std::io::Error::new(ErrorKind::TimedOut, "timed out");
+        assert!(can_recover_control_response_after_read_error(
+            &timed_out,
+            b"HTTP/1.1 200 OK\r\n\r\n{}"
+        ));
+
+        let would_block = std::io::Error::new(ErrorKind::WouldBlock, "would block");
+        assert!(can_recover_control_response_after_read_error(
+            &would_block,
+            b"HTTP/1.1 200 OK\r\n\r\n{}"
+        ));
+
+        let broken_pipe = std::io::Error::new(ErrorKind::BrokenPipe, "broken pipe");
+        assert!(!can_recover_control_response_after_read_error(
+            &broken_pipe,
+            b"HTTP/1.1 200 OK\r\n\r\n{}"
+        ));
+        assert!(!can_recover_control_response_after_read_error(&timed_out, b""));
+    }
+
+    #[test]
+    fn parses_control_response_bytes_from_http_payload() {
+        let response = parse_control_response_bytes(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"command\":\"status\",\"data\":{\"running\":true},\"error\":null,\"ok\":true,\"requestId\":\"req-1\",\"sessionId\":null}",
+        )
+        .expect("http response bytes should parse");
+
+        assert_eq!(response.command, "status");
+        assert_eq!(response.data, Some(json!({ "running": true })));
+        assert!(response.ok);
+    }
+
+    #[test]
     fn writes_svg_pages_to_directory_and_sets_output_paths() {
         let output_dir = std::env::temp_dir().join(format!(
             "ai-drawio-svg-{}",
@@ -1862,6 +2390,43 @@ mod tests {
     }
 
     #[test]
+    fn session_status_trim_synthesizes_unavailable_when_app_status_lacks_session_payload() {
+        let mut response = ControlResponse {
+            command: "status".to_string(),
+            data: Some(json!({
+                "address": "127.0.0.1:47831",
+                "running": true,
+                "session": null,
+                "shell": {
+                    "route": "/session"
+                }
+            })),
+            error: None,
+            ok: true,
+            request_id: "req-2".to_string(),
+            session_id: None,
+        };
+
+        trim_status_response_data(
+            &PackagedCliCommand::Status {
+                session_id: "sess-2".to_string(),
+            },
+            &mut response,
+        )
+        .expect("session status should synthesize a session fallback payload");
+
+        assert_eq!(response.command, "session.status");
+        assert_eq!(
+            response.data,
+            Some(json!({
+                "isReady": false,
+                "sessionId": "sess-2",
+                "status": "unavailable"
+            }))
+        );
+    }
+
+    #[test]
     fn top_level_status_response_can_be_trimmed_to_app_only() {
         let mut response = ControlResponse {
             command: "status".to_string(),
@@ -1975,9 +2540,6 @@ mod tests {
 
         assert!(!requires_running_app(&PackagedCliCommand::Status {
             session_id: "sess-1".to_string()
-        }));
-        assert!(!requires_running_app(&PackagedCliCommand::Open {
-            mode: OpenMode::Tray
         }));
     }
 }

@@ -40,15 +40,19 @@ The desktop app starts on a local AI conversation history page and opens draw.io
 
 - The packaged macOS binary is named `ai-drawio`.
 - The DMG install flow is drag-and-drop installation of `AI Drawio.app`.
+- Use the packaged executable via an absolute path instead of relying on PATH registration.
+- If the app is installed in the default macOS location, prefer `/Applications/AI Drawio.app/Contents/MacOS/ai-drawio`.
+- If the app is not under `/Applications`, discover the installed bundle first and then reuse its `Contents/MacOS/ai-drawio` path.
+- Launch the installed desktop app directly by executing its absolute application binary path.
 - When invoked from a terminal with a CLI command, the binary behaves like a helper:
-  - `ai-drawio open` can launch the desktop app directly
-  - other commands connect to an already running desktop instance when possible
-  - otherwise non-open commands return a structured response telling the caller to open the desktop window manually
+  - commands connect to an already running desktop instance when possible
+  - otherwise they return a structured response telling the caller to launch the desktop app first
 
-- `ai-drawio open`
-  Launches the desktop app and defaults to tray startup mode.
-- `ai-drawio open --mode window`
-  Launches the desktop app in window mode for this run only without persisting the tray preference.
+Absolute-path example:
+
+```bash
+/Applications/AI Drawio.app/Contents/MacOS/ai-drawio
+```
 - `ai-drawio session list`
   Lists all persisted local sessions and returns each session `id` and `title`.
 - `ai-drawio session create`

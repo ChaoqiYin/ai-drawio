@@ -11,11 +11,14 @@ export type SessionRuntimeEntry = {
 
 type SessionShellControls = {
   ensureSessionTab?: (sessionId?: string) => Promise<{ id: string } | null> | { id: string } | null;
-  openSessionTab?: (sessionId: string, title?: string) => Promise<void> | void;
+  openSessionTab?: (
+    sessionId: string,
+    title?: string,
+    options?: { activate?: boolean },
+  ) => Promise<void> | void;
 };
 
 const sessionRuntimes = new Map<string, SessionRuntimeEntry>();
-const busySessions = new Set<string>();
 let sessionShellControls: SessionShellControls = {};
 
 export function registerSessionRuntime(sessionId: string, entry: SessionRuntimeEntry): void {
@@ -47,24 +50,13 @@ export function getSessionShellControls(): SessionShellControls {
 }
 
 export async function runSessionDocumentAction<T>(
-  sessionId: string,
+  _sessionId: string,
   action: () => Promise<T> | T,
 ): Promise<T> {
-  if (busySessions.has(sessionId)) {
-    throw new Error(`SESSION_BUSY: session '${sessionId}' already has an active document action`);
-  }
-
-  busySessions.add(sessionId);
-
-  try {
-    return await action();
-  } finally {
-    busySessions.delete(sessionId);
-  }
+  return await action();
 }
 
 export function resetSessionRuntimeRegistryForTests(): void {
   sessionRuntimes.clear();
-  busySessions.clear();
   sessionShellControls = {};
 }

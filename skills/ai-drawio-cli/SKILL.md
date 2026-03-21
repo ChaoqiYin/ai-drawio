@@ -11,14 +11,19 @@ Use this skill for draw.io work that must go through the installed `ai-drawio` C
 
 ## Core Rules
 
-- Use only `ai-drawio`, not development wrappers such as `npm run cli`.
-- Do not execute any `ai-drawio` terminal command from this skill inside the default sandbox, including `open`, `status`, `session *`, and `canvas document.*`.
+- Resolve the packaged `ai-drawio` executable to an absolute path before running any CLI command.
+- Do not rely on PATH lookup or shell command discovery for `ai-drawio`.
+- If the packaged app is installed in the default macOS location, prefer `/Applications/AI Drawio.app/Contents/MacOS/ai-drawio`.
+- If the default location is unavailable, discover the actual app bundle path first and then keep using the resolved executable path consistently for the rest of the task.
+- Use only the packaged `ai-drawio` executable, not development wrappers such as `npm run cli`.
+- Do not execute any `ai-drawio` terminal command from this skill inside the default sandbox, including `status`, `session *`, and `canvas document.*`.
 - For existing sessions, use the exact `session-id` as a required positional argument.
 - Use `session create` when the user needs a new ready session.
+- Launch the desktop app itself by executing the resolved packaged app path directly.
 - Every `canvas document.apply` command must include a required prompt argument with the user request summary.
 - Do not generate a `.drawio` file unless the user explicitly asked for file output or the XML payload is too large for a safe inline command.
 - `ai-drawio status` is detection-only and must never auto-launch the desktop app.
-- If a command returns `APP_NOT_RUNNING`, or `status` returns `running: false`, run `ai-drawio open` yourself outside the sandbox and then continue with the original task.
+- If a command returns `APP_NOT_RUNNING`, or `status` returns `running: false`, execute the resolved packaged app path directly outside the sandbox and then continue with the original task.
 - Unless the user explicitly asks to close or quit the app, do not close the desktop app after any CLI command completes.
 
 ## Session Concurrency
@@ -31,7 +36,7 @@ Use this skill for draw.io work that must go through the installed `ai-drawio` C
 
 ## Command Selection
 
-- `open`: only when you need to launch the desktop app itself.
+- Start the desktop app directly by executing the resolved packaged app path only when you need to start the desktop app itself.
 - `status`: only when you need to know whether the desktop app is running.
 - `session status <session-id>`: only when you need to know whether one session is ready.
 - `session create`: only when the user explicitly needs a new ready session.
@@ -61,22 +66,23 @@ Use this skill for draw.io work that must go through the installed `ai-drawio` C
 ## Workflow
 
 1. Pick the smallest command that can satisfy the request.
-2. If the task targets an existing session, require the explicit `session-id`.
-3. If the user needs a new workspace, use `session create`, capture the returned `sessionId`, and use that ID afterward.
-4. If the chosen command returns `APP_NOT_RUNNING`, or an intentional `status` check reports `running: false`, run `ai-drawio open` outside the sandbox and then continue with the original task.
-5. Parallelize only across different session IDs.
-6. Keep same-session commands strictly serial.
-7. Read XML first only when the edit actually depends on the current document.
-8. If the user asked to draw or render in draw.io, use `canvas document.apply <session-id> <prompt>` unless the user explicitly requested file-only output.
-9. Keep XML in memory by default. Only use `--xml-file` when the XML already exists on disk or an oversized inline payload requires a temporary file.
-10. Read only the single matching command reference file when exact command syntax or argument shape matters.
+2. Resolve the packaged executable path once, then keep using that same absolute path for every later command in the task.
+3. If the task targets an existing session, require the explicit `session-id`.
+4. If the user needs a new workspace, use `session create`, capture the returned `sessionId`, and use that ID afterward.
+5. If the chosen command returns `APP_NOT_RUNNING`, or an intentional `status` check reports `running: false`, execute the resolved packaged app path directly outside the sandbox and then continue with the original task.
+6. Parallelize only across different session IDs.
+7. Keep same-session commands strictly serial.
+8. Read XML first only when the edit actually depends on the current document.
+9. If the user asked to draw or render in draw.io, use `canvas document.apply <session-id> <prompt>` unless the user explicitly requested file-only output.
+10. Keep XML in memory by default. Only use `--xml-file` when the XML already exists on disk or an oversized inline payload requires a temporary file.
+11. Read only the single matching command reference file when exact command syntax or argument shape matters.
 
 ## Progressive Reference Loading
 
 - Read only one detailed reference file at a time.
 - If the command changes, load the next matching file. Do not preload unrelated files.
 - Reference mapping:
-  - `ai-drawio open` -> `references/open.md`
+  - `bundle executable discovery` -> `references/bundle-executable-discovery.md`
   - `ai-drawio status` -> `references/status.md`
   - `ai-drawio session create` -> `references/session-create.md`
   - `ai-drawio session list` -> `references/session-list.md`

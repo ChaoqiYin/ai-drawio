@@ -1,4 +1,4 @@
-use crate::conversation_db::{self, ConversationDatabase, ConversationRecordRow};
+use crate::conversation_db::{self, ConversationDatabase};
 use crate::control_protocol::ControlError;
 use crate::webview_api::{eval_main_window_script_with_result, ScriptResultBridgeState};
 use serde::{Deserialize, Serialize};
@@ -6,6 +6,9 @@ use serde_json::{json, Value};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
+
+const BRIDGE_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(2);
+const MIN_ATTEMPT_TIMEOUT: Duration = Duration::from_millis(1);
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,14 +125,6 @@ fn has_conversation(app: &AppHandle, session_id: &str) -> Result<bool, ControlEr
         .map_err(|error| ControlError::new("INTERNAL_ERROR", error))
 }
 
-fn find_conversation_by_title(app: &AppHandle, title: &str) -> Result<Option<String>, ControlError> {
-    let connection = open_conversation_connection(app)?;
-    let summary = conversation_db::find_conversation_by_title(&connection, title)
-        .map_err(|error| ControlError::new("INTERNAL_ERROR", error))?;
-
-    Ok(summary.map(|item| item.id))
-}
-
 fn list_session_entries(
     connection: &rusqlite::Connection,
 ) -> Result<Vec<SessionListEntry>, ControlError> {
@@ -146,37 +141,6 @@ fn list_session_entries(
         .collect())
 }
 
-fn conversation_to_value(conversation: ConversationRecordRow) -> Value {
-    json!({
-        "id": conversation.id,
-        "title": conversation.title,
-        "createdAt": conversation.created_at,
-        "updatedAt": conversation.updated_at,
-        "messages": conversation.messages.into_iter().map(|message| {
-            json!({
-                "id": message.id,
-                "role": message.role,
-                "content": message.content,
-                "createdAt": message.created_at
-            })
-        }).collect::<Vec<_>>(),
-        "canvasHistory": conversation.canvas_history.into_iter().map(|entry| {
-            let preview_pages = serde_json::from_str::<Value>(&entry.preview_pages_json)
-                .unwrap_or_else(|_| Value::Array(Vec::new()));
-            json!({
-                "id": entry.id,
-                "conversationId": entry.conversation_id,
-                "createdAt": entry.created_at,
-                "label": entry.label,
-                "previewPages": preview_pages,
-                "source": entry.source,
-                "xml": entry.xml,
-                "relatedMessageId": entry.related_message_id
-            })
-        }).collect::<Vec<_>>()
-    })
-}
-
 pub fn list_sessions(
     app: &AppHandle,
     _bridge_state: &ScriptResultBridgeState,
@@ -188,73 +152,34 @@ pub fn list_sessions(
     list_session_entries(&connection)
 }
 
-pub fn get_conversation(
-    app: &AppHandle,
-    _bridge_state: &ScriptResultBridgeState,
-    session_id: &str,
-    _timeout: Duration,
-) -> Result<Value, ControlError> {
-    show_main_window(app)?;
-    let connection = open_conversation_connection(app)?;
-    let conversation = conversation_db::get_conversation_by_id(&connection, session_id)
-        .map_err(|error| ControlError::new("INTERNAL_ERROR", error))?
-        .ok_or_else(|| {
-            ControlError::new(
-                "SESSION_NOT_FOUND",
-                format!("session '{session_id}' was not found in local storage"),
-            )
-        })?;
-
-    Ok(conversation_to_value(conversation))
-}
-
-pub fn get_conversation_by_title(
-    app: &AppHandle,
-    bridge_state: &ScriptResultBridgeState,
-    title: &str,
-    timeout: Duration,
-) -> Result<Value, ControlError> {
-    let normalized_title = title.trim();
-
-    if normalized_title.is_empty() {
-        return Err(ControlError::new(
-            "VALIDATION_FAILED",
-            "session title cannot be empty",
-        ));
-    }
-
-    let session_id = find_conversation_by_title(app, normalized_title)?
-        .ok_or_else(|| {
-            ControlError::new(
-                "SESSION_NOT_FOUND",
-                format!("session with title '{normalized_title}' was not found in local storage"),
-            )
-        })?;
-
-    get_conversation(app, bridge_state, &session_id, timeout)
-}
-
 fn navigate_to_session(
     app: &AppHandle,
     bridge_state: &ScriptResultBridgeState,
     session_id: &str,
     timeout: Duration,
+    activate: bool,
 ) -> Result<(), ControlError> {
     let started_at = Instant::now();
     let poll_interval = Duration::from_millis(200);
     let session_id_json = serde_json::to_string(session_id)
         .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+    let activate_json = if activate { "true" } else { "false" };
 
     while started_at.elapsed() < timeout {
+        let attempt_timeout = remaining_attempt_timeout(
+            started_at,
+            timeout,
+            BRIDGE_ATTEMPT_TIMEOUT,
+        );
         let value = eval_main_window_script_with_result(
             app,
             bridge_state,
             &format!(
                 r#"
-return await window.__AI_DRAWIO_SHELL__?.conversationStore?.openSession?.({session_id_json}) ?? null;
+return await window.__AI_DRAWIO_SHELL__?.conversationStore?.openSession?.({session_id_json}, {{ activate: {activate_json} }}) ?? null;
 "#
             ),
-            Duration::from_secs(2),
+            attempt_timeout,
         )
         .map_err(|error| ControlError::new("APP_NOT_READY", error));
 
@@ -328,52 +253,14 @@ return window.__AI_DRAWIO_SHELL__?.sessions?.[{session_id_json}]?.getState?.() ?
         .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))
 }
 
-pub fn ensure_session(
-    app: &AppHandle,
-    bridge_state: &ScriptResultBridgeState,
-    timeout: Duration,
-) -> Result<ShellState, ControlError> {
-    show_main_window(app)?;
-
-    if let Ok(state) = get_shell_state(app, bridge_state, Duration::from_secs(2)) {
-        if is_reusable_session_state(&state) {
-            return Ok(state);
-        }
-
-        if let Some(session_id) = get_active_session_id(&state) {
-            return wait_for_session_ready(app, bridge_state, &session_id, timeout);
-        }
-    }
-
-    let created_conversation = create_conversation(app, bridge_state, timeout)?;
-    let session_id = created_conversation
-        .get("id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| {
-            ControlError::new(
-                "INTERNAL_ERROR",
-                "conversation create bridge did not return a persisted session id",
-            )
-        })?;
-
-    open_session(app, bridge_state, &session_id, timeout)
-}
-
 pub fn open_session(
     app: &AppHandle,
     bridge_state: &ScriptResultBridgeState,
     session_id: &str,
     timeout: Duration,
+    activate: bool,
 ) -> Result<ShellState, ControlError> {
     show_main_window(app)?;
-
-    if let Ok(state) = require_session_ready(app, bridge_state, session_id, Duration::from_secs(2))
-    {
-        return Ok(state);
-    }
 
     if !has_conversation(app, session_id)? {
         return Err(ControlError::new(
@@ -383,37 +270,23 @@ pub fn open_session(
         .with_details(Value::String(build_session_route(session_id))));
     }
 
-    navigate_to_session(app, bridge_state, session_id, timeout)?;
+    navigate_to_session(app, bridge_state, session_id, timeout, activate)?;
 
-    wait_for_session_ready(app, bridge_state, session_id, timeout)
-}
-
-pub fn open_session_by_title(
-    app: &AppHandle,
-    bridge_state: &ScriptResultBridgeState,
-    title: &str,
-    timeout: Duration,
-) -> Result<ShellState, ControlError> {
-    show_main_window(app)?;
-
-    let normalized_title = title.trim();
-
-    if normalized_title.is_empty() {
-        return Err(ControlError::new(
-            "VALIDATION_FAILED",
-            "session title cannot be empty",
-        ));
-    }
-
-    let session_id = find_conversation_by_title(app, normalized_title)?
-        .ok_or_else(|| {
-            ControlError::new(
-                "SESSION_NOT_FOUND",
-                format!("session with title '{normalized_title}' was not found in local storage"),
-            )
-        })?;
-
-    open_session(app, bridge_state, &session_id, timeout)
+    Ok(get_shell_state(
+        app,
+        bridge_state,
+        timeout.min(BRIDGE_ATTEMPT_TIMEOUT),
+    )
+    .unwrap_or(ShellState {
+        bootstrap_error: None,
+        bridge_ready: false,
+        conversation_loaded: false,
+        document_loaded: false,
+        frame_ready: false,
+        last_event: "session-navigation-requested".to_string(),
+        route: build_session_route(session_id),
+        session_id: session_id.to_string(),
+    }))
 }
 
 pub fn require_session_ready(
@@ -445,7 +318,7 @@ pub fn require_session_ready(
         );
     }
 
-    let fallback_shell_state = get_shell_state(app, bridge_state, Duration::from_secs(2))
+    let fallback_shell_state = get_shell_state(app, bridge_state, timeout)
         .unwrap_or(ShellState {
             bootstrap_error: None,
             bridge_ready: true,
@@ -469,50 +342,49 @@ pub fn require_session_ready(
     })
 }
 
-fn wait_for_session_ready(
-    app: &AppHandle,
-    bridge_state: &ScriptResultBridgeState,
-    session_id: &str,
-    timeout: Duration,
-) -> Result<ShellState, ControlError> {
-    let started_at = Instant::now();
-    let poll_interval = Duration::from_millis(200);
+fn remaining_attempt_timeout(
+    started_at: Instant,
+    total_timeout: Duration,
+    max_attempt_timeout: Duration,
+) -> Duration {
+    let remaining = total_timeout.saturating_sub(started_at.elapsed());
+    let bounded = remaining.min(max_attempt_timeout);
 
-    while started_at.elapsed() < timeout {
-        if let Ok(state) = get_shell_state(app, bridge_state, Duration::from_secs(2)) {
-            if get_active_session_id(&state).as_deref() == Some(session_id)
-                && state.bridge_ready
-                && state.frame_ready
-            {
-                return Ok(state);
-            }
-        }
+    if bounded.is_zero() {
+        MIN_ATTEMPT_TIMEOUT
+    } else {
+        bounded
+    }
+}
 
-        if let Ok(state) =
-            require_session_ready(app, bridge_state, session_id, Duration::from_secs(2))
-        {
-            return Ok(state);
-        }
+#[cfg(test)]
+fn remaining_total_timeout(
+    started_at: Instant,
+    total_timeout: Duration,
+) -> Result<Duration, ControlError> {
+    let remaining = total_timeout.saturating_sub(started_at.elapsed());
 
-        thread::sleep(poll_interval);
+    if remaining.is_zero() {
+        return Err(ControlError::new(
+            "COMMAND_TIMEOUT",
+            "timed out before the next session step could begin",
+        ));
     }
 
-    Err(ControlError::new(
-        "COMMAND_TIMEOUT",
-        format!("timed out while opening session '{session_id}'"),
-    )
-    .with_details(Value::String(build_session_route(session_id))))
+    Ok(remaining)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         build_session_route, extract_session_id_from_route, get_active_session_id,
-        is_reusable_session_state, list_session_entries, SessionListEntry,
-        SessionRuntimeState, ShellState,
+        is_reusable_session_state, list_session_entries, remaining_attempt_timeout,
+        remaining_total_timeout, SessionListEntry, SessionRuntimeState, ShellState,
+        BRIDGE_ATTEMPT_TIMEOUT,
     };
     use crate::conversation_db::{self, ConversationSummaryRow};
     use rusqlite::Connection;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn builds_session_route() {
@@ -570,6 +442,55 @@ mod tests {
         };
 
         assert!(is_reusable_session_state(&state));
+    }
+
+    #[test]
+    fn remaining_attempt_timeout_caps_each_bridge_attempt() {
+        let started_at = Instant::now();
+
+        let timeout = remaining_attempt_timeout(
+            started_at,
+            Duration::from_secs(30),
+            BRIDGE_ATTEMPT_TIMEOUT,
+        );
+
+        assert!(timeout <= BRIDGE_ATTEMPT_TIMEOUT);
+        assert!(!timeout.is_zero());
+    }
+
+    #[test]
+    fn remaining_attempt_timeout_shrinks_to_the_remaining_budget() {
+        let started_at = Instant::now() - Duration::from_millis(950);
+
+        let timeout = remaining_attempt_timeout(
+            started_at,
+            Duration::from_secs(1),
+            BRIDGE_ATTEMPT_TIMEOUT,
+        );
+
+        assert!(timeout <= Duration::from_millis(50));
+        assert!(!timeout.is_zero());
+    }
+
+    #[test]
+    fn remaining_total_timeout_returns_remaining_budget() {
+        let started_at = Instant::now() - Duration::from_millis(100);
+
+        let remaining =
+            remaining_total_timeout(started_at, Duration::from_secs(1)).expect("budget remains");
+
+        assert!(remaining <= Duration::from_millis(900));
+        assert!(!remaining.is_zero());
+    }
+
+    #[test]
+    fn remaining_total_timeout_rejects_exhausted_budget() {
+        let started_at = Instant::now() - Duration::from_secs(2);
+
+        let error = remaining_total_timeout(started_at, Duration::from_secs(1))
+            .expect_err("exhausted budget should fail");
+
+        assert_eq!(error.code, "COMMAND_TIMEOUT");
     }
 
     #[test]

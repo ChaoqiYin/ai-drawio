@@ -5,22 +5,7 @@ pub fn build_cli_command() -> Command {
         .about("Open or control the AI Drawio desktop app from the terminal")
         .disable_help_subcommand(true)
         .after_help(
-            "Common commands:\n  ai-drawio open\n  ai-drawio open --mode window\n  ai-drawio session create\n  ai-drawio session open <session-id>\n  ai-drawio canvas document.get <session-id>\n  ai-drawio canvas document.apply <session-id> \"update layout\" --xml-file ./diagram.drawio",
-        )
-        .subcommand(
-            Command::new("open")
-                .about("Launch the desktop app")
-                .after_help(
-                    "Startup modes:\n  tray   Start hidden in the tray for this run only (default)\n  window Start with the main window visible for this run only\n\nExamples:\n  ai-drawio open\n  ai-drawio open --mode window",
-                )
-                .arg(
-                    Arg::new("mode")
-                        .long("mode")
-                        .value_name("mode")
-                        .help("Choose whether this launch starts in tray or window mode")
-                        .default_value("tray")
-                        .value_parser(["tray", "window"]),
-                ),
+            "Common commands:\n  ai-drawio status\n  ai-drawio session create\n  ai-drawio session open <session-id>\n  ai-drawio canvas document.get <session-id>\n  ai-drawio canvas document.apply <session-id> \"update layout\" --xml-file ./diagram.drawio",
         )
         .subcommand(
             Command::new("status")
@@ -251,24 +236,9 @@ mod tests {
     fn top_level_help_lists_common_commands() {
         let help = build_cli_command().render_help().to_string();
 
-        assert!(help.contains("open"));
+        assert!(!help.contains("ai-drawio open"));
         assert!(help.contains("Common commands:"));
         assert!(help.contains("ai-drawio canvas document.apply"));
-    }
-
-    #[test]
-    fn open_help_describes_modes() {
-        let open_help = build_cli_command()
-            .find_subcommand("open")
-            .expect("open subcommand should exist")
-            .clone()
-            .render_help()
-            .to_string();
-
-        assert!(open_help.contains("Launch the desktop app"));
-        assert!(open_help.contains("Startup modes:"));
-        assert!(open_help.contains("tray"));
-        assert!(open_help.contains("window"));
     }
 
     #[test]

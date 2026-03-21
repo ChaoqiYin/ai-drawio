@@ -48,7 +48,11 @@ export default function SessionTabsShell() {
   const activeSession = openedSessions.find((session) => session.id === activeSessionId) ?? null;
 
   useEffect(() => {
-    async function openSessionTab(sessionId: string, title?: string) {
+    async function openSessionTab(
+      sessionId: string,
+      title?: string,
+      options?: { activate?: boolean },
+    ) {
       const currentSummary = openedSessions.find((session) => session.id === sessionId);
       const storedConversation = await getConversationById(sessionId);
 
@@ -61,6 +65,9 @@ export default function SessionTabsShell() {
               updatedAt: storedConversation.updatedAt,
             }
           : buildSessionSummary(sessionId, title, currentSummary),
+        {
+          activate: options?.activate ?? true,
+        },
       );
     }
 

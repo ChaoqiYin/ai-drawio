@@ -38,21 +38,14 @@ test("packaged tauri cli uses rust dispatch and completion generation without pl
   assert.match(buildSource, /tauri_build::build/);
   assert.doesNotMatch(tauriConfig, /"plugins"\s*:\s*\{/);
   assert.doesNotMatch(tauriConfig, /"cli"\s*:/);
-  assert.match(cliSchemaSource, /Command::new\("open"\)/);
-  assert.match(
-    cliSchemaSource,
-    /Arg::new\("mode"\)[\s\S]*\.long\("mode"\)[\s\S]*\.value_name\("mode"\)[\s\S]*\.default_value\("tray"\)/
-  );
+  assert.match(cliSchemaSource, /Command::new\("session"\)[\s\S]*Command::new\("open"\)/);
+  assert.match(cliSchemaSource, /assert!\(!help\.contains\("ai-drawio open"\)\);/);
   assert.match(packagedCliSource, /document\.svg/);
   assert.match(packagedCliSource, /document\.preview/);
-  assert.match(packagedCliSource, /\bOpenMode::Tray\b/);
-  assert.match(packagedCliSource, /\bOpenMode::Window\b/);
   assert.match(packagedCliSource, /session open <session-id>|session-id/);
   assert.match(packagedCliSource, /xml-stdin/);
-  assert.match(packagedCliSource, /\bPackagedCliCommand::Open\b/);
-  assert.match(packagedCliSource, /STARTUP_MODE_ENV_VAR/);
-  assert.match(packagedCliSource, /std::env::current_exe/);
-  assert.match(packagedCliSource, /Command::new\(current_exe\)/);
+  assert.doesNotMatch(packagedCliSource, /\bPackagedCliCommand::Open\b/);
+  assert.doesNotMatch(packagedCliSource, /session\.ensure|session\.get|open_session_by_title|get_conversation_by_title/);
 });
 
 test("package scripts keep direct tauri build entrypoints without wrapper shell scripts", async () => {
@@ -74,6 +67,18 @@ test("package scripts keep direct tauri build entrypoints without wrapper shell 
   assert.match(tauriConfig, /"targets"\s*:\s*"dmg"|\"targets\"\s*:\s*\[\s*\"dmg\"\s*\]/);
   assert.match(readme, /npm run build -- --bundles dmg/);
   assert.doesNotMatch(readme, /Install ai-drawio into PATH/);
+  assert.match(
+    readme,
+    /Launch the installed desktop app directly by executing its absolute application binary path/
+  );
+  assert.match(
+    readme,
+    /Use the packaged executable via an absolute path instead of relying on PATH registration/
+  );
+  assert.match(
+    readme,
+    /If the app is not under `\/Applications`, discover the installed bundle first and then reuse its `Contents\/MacOS\/ai-drawio` path/
+  );
   assert.match(readme, /ai-drawio session create/);
   assert.match(readme, /ai-drawio status/);
   assert.match(readme, /ai-drawio session status <session-id>/);
@@ -85,8 +90,8 @@ test("package scripts keep direct tauri build entrypoints without wrapper shell 
   assert.doesNotMatch(readme, /conversation create/);
   assert.doesNotMatch(readme, /session open --title/);
   assert.doesNotMatch(readme, /canvas document\.get --session/);
-  assert.match(readme, /ai-drawio open/);
-  assert.match(readme, /ai-drawio open --mode window/);
+  assert.doesNotMatch(readme, /ai-drawio open/);
+  assert.match(readme, /\/Applications\/AI Drawio\.app\/Contents\/MacOS\/ai-drawio/);
 });
 
 test("macOS dmg bundle sources the packaged app icon from the shared icns asset", async () => {

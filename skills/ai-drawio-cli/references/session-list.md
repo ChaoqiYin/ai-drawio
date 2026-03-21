@@ -5,7 +5,7 @@ Use only when the user explicitly needs the persisted session list.
 ## Command
 
 ```bash
-ai-drawio session list
+"$AI_DRAWIO_BIN" session list
 ```
 
 - Use this when the user needs to discover the exact session id for later commands.

@@ -1,35 +1,15 @@
 "use client";
 
-type TauriInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+import {
+  getRequiredTauriInvoke as getSharedRequiredTauriInvoke,
+  getTauriInvoke as getSharedTauriInvoke,
+  type TauriInvoke,
+} from "../../_lib/tauri-bridge.ts";
 
-type TauriWindow = Window &
-  typeof globalThis & {
-    __TAURI_INTERNALS__?: {
-      invoke?: TauriInvoke;
-    };
-    __TAURI__?: {
-      core?: {
-        invoke?: TauriInvoke;
-      };
-    };
-  };
+export type { TauriInvoke } from "../../_lib/tauri-bridge.ts";
 
 export function getTauriInvoke(): TauriInvoke | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const tauriWindow = window as TauriWindow;
-
-  if (typeof tauriWindow.__TAURI_INTERNALS__?.invoke === "function") {
-    return tauriWindow.__TAURI_INTERNALS__.invoke;
-  }
-
-  if (typeof tauriWindow.__TAURI__?.core?.invoke === "function") {
-    return tauriWindow.__TAURI__.core.invoke;
-  }
-
-  return null;
+  return getSharedTauriInvoke();
 }
 
 export function hasTauriInvoke(): boolean {
@@ -37,11 +17,5 @@ export function hasTauriInvoke(): boolean {
 }
 
 export function getRequiredTauriInvoke(): TauriInvoke {
-  const invoke = getTauriInvoke();
-
-  if (!invoke) {
-    throw new Error("Tauri desktop bridge is not available in this environment.");
-  }
-
-  return invoke;
+  return getSharedRequiredTauriInvoke();
 }

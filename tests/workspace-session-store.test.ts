@@ -40,6 +40,16 @@ test("openSession appends without duplication and activates the target session",
   assert.equal(store.getState().activeSessionId, "alpha");
 });
 
+test("openSession can append a session without changing the current active session", () => {
+  const store = createWorkspaceSessionStore();
+
+  store.getState().enterSessionDetail(alpha);
+  store.getState().openSession(beta, { activate: false });
+
+  assert.deepEqual(store.getState().openedSessions, [alpha, beta]);
+  assert.equal(store.getState().activeSessionId, "alpha");
+});
+
 test("closeSession removes the target and falls back to the nearest remaining session", () => {
   const store = createWorkspaceSessionStore();
 

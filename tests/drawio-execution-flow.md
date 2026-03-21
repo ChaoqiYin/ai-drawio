@@ -122,7 +122,6 @@ desktop control server did not become ready in time
 为排除桌面应用未真正进入可控状态的情况，又执行了以下操作：
 
 ```bash
-ai-drawio open
 open -a "/Applications/AI Drawio.app"
 open -a "/Applications/AI Drawio.app" /Users/admin/workspace/other/test-drawio/detailed-design.drawio
 ```

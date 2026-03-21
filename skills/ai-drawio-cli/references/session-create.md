@@ -5,7 +5,7 @@ Use only when the user explicitly needs a new ready session.
 ## Command
 
 ```bash
-ai-drawio session create
+"$AI_DRAWIO_BIN" session create
 ```
 
 - This command creates a new persisted session, opens it, waits for readiness, and returns the new session id.

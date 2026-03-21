@@ -20,6 +20,7 @@ import {
   importLegacyIndexedDbConversations,
   listConversations
 } from "../_lib/conversation-store";
+import { useWorkspaceSessionStore, type WorkspaceSessionSummary } from "../_lib/workspace-session-store";
 
 type ShellState = {
   bootstrapError: string | null;
@@ -62,7 +63,7 @@ type ShellConversationStore = {
       title: string;
     }>
   >;
-  openSession: (id: string) => Promise<{
+  openSession: (id: string, options?: { activate?: boolean }) => Promise<{
     href: string;
     id: string;
   }>;
@@ -73,7 +74,7 @@ type ShellBridge = {
   getState?: () => ShellState;
   getSessionStatus?: (id: string) => ReturnType<typeof getSessionStatus>;
   listOpenSessions?: () => string[];
-  openSessionTab?: (id: string, title?: string) => Promise<void>;
+  openSessionTab?: (id: string, title?: string, options?: { activate?: boolean }) => Promise<void>;
   ensureSessionTab?: (id?: string) => Promise<{ id: string } | null>;
   sessions?: Record<string, ReturnType<typeof getSessionRuntime>>;
 };
@@ -97,6 +98,19 @@ function buildIdleShellState(): ShellState {
     lastEvent: "idle",
     route,
     sessionId: ""
+  };
+}
+
+function buildWorkspaceSessionSummary(
+  id: string,
+  title?: string,
+  updatedAt?: string,
+): WorkspaceSessionSummary {
+  return {
+    id,
+    isReady: false,
+    title: title ?? id,
+    updatedAt: updatedAt ?? new Date(0).toISOString(),
   };
 }
 
@@ -157,10 +171,33 @@ export default function InternalShellBridge() {
 
           return conversation ?? null;
         },
-        async openSession(id) {
+        async openSession(id, options) {
           const href = buildSessionHref(id);
-          await getSessionShellControls().openSessionTab?.(id, id);
-          router.push(href);
+          const openSessionTab = getSessionShellControls().openSessionTab;
+
+          if (openSessionTab) {
+            await openSessionTab(id, id, {
+              activate: options?.activate ?? true,
+            });
+          } else {
+            const conversation = await getConversationById(id);
+            const openSessionInStore = useWorkspaceSessionStore.getState().openSession;
+
+            openSessionInStore(
+              buildWorkspaceSessionSummary(
+                id,
+                conversation?.title,
+                conversation?.updatedAt,
+              ),
+              {
+                activate: options?.activate ?? true,
+              },
+            );
+          }
+
+          if (window.location.pathname !== href) {
+            router.push(href);
+          }
 
           return {
             href,
@@ -170,8 +207,8 @@ export default function InternalShellBridge() {
       },
       getSessionStatus,
       listOpenSessions,
-      openSessionTab: async (id, title) => {
-        await getSessionShellControls().openSessionTab?.(id, title);
+      openSessionTab: async (id, title, options) => {
+        await getSessionShellControls().openSessionTab?.(id, title, options);
       },
       sessions: new Proxy(
         {},

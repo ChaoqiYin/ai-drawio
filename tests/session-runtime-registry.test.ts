@@ -42,7 +42,7 @@ test("session runtime registry tracks session-scoped runtime entries", () => {
   assert.equal(getSessionStatus("session-1"), null);
 });
 
-test("session runtime registry rejects overlapping actions for the same session but allows different sessions", async () => {
+test("session runtime registry allows overlapping actions even for the same session", async () => {
   resetSessionRuntimeRegistryForTests();
 
   let releaseFirstAction: (() => void) | null = null;
@@ -55,12 +55,10 @@ test("session runtime registry rejects overlapping actions for the same session 
 
   await Promise.resolve();
 
-  await assert.rejects(
-    () => runSessionDocumentAction("session-1", async () => "second-done"),
-    /SESSION_BUSY/
-  );
+  const secondAction = runSessionDocumentAction("session-1", async () => "second-done");
 
   const otherSessionResult = await runSessionDocumentAction("session-2", async () => "other-done");
+  assert.equal(await secondAction, "second-done");
   assert.equal(otherSessionResult, "other-done");
 
   releaseFirstAction?.();

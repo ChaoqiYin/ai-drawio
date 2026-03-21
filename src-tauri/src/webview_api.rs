@@ -9,6 +9,7 @@ use tauri::{AppHandle, Manager, WebviewWindow};
 
 pub const MAIN_WINDOW_LABEL: &str = "main";
 const SHELL_HELPER_OBJECT: &str = "__AI_DRAWIO_SHELL__";
+const TAURI_HELPER_OBJECT: &str = "__AI_DRAWIO_TAURI__";
 const RESULT_BRIDGE_COMMAND: &str = "report_bridge_result";
 
 #[derive(Debug, Deserialize)]
@@ -298,6 +299,10 @@ pub fn build_result_bridge_eval_script(request_id: &str, script: &str) -> Result
   const requestId = {request_id_json};
 
   const getInvoke = () => {{
+    if (window.{tauri_helper} && typeof window.{tauri_helper}.invoke === "function") {{
+      return window.{tauri_helper}.invoke;
+    }}
+
     if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === "function") {{
       return window.__TAURI_INTERNALS__.invoke;
     }}
@@ -340,7 +345,8 @@ pub fn build_result_bridge_eval_script(request_id: &str, script: &str) -> Result
 "#,
         bridge_command = RESULT_BRIDGE_COMMAND,
         request_id_json = request_id_json,
-        script = script
+        script = script,
+        tauri_helper = TAURI_HELPER_OBJECT
     ))
 }
 
@@ -453,6 +459,7 @@ mod tests {
 
         assert!(script.contains("report_bridge_result"));
         assert!(script.contains("bridge-1"));
+        assert!(script.contains(super::TAURI_HELPER_OBJECT));
         assert!(script.contains("window.__TAURI_INTERNALS__"));
         assert!(script.contains("documentBridge.getDocument"));
     }

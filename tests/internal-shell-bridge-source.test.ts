@@ -31,3 +31,20 @@ test("internal shell bridge exposes shared session orchestration helpers", async
   assert.doesNotMatch(source, /URLSearchParams\(window\.location\.search\)\.get\("id"\)/);
   assert.doesNotMatch(source, /\/session\?id=/);
 });
+
+test("internal shell bridge seeds the workspace session store before routing when shell controls are unavailable", async () => {
+  const source = await readFile(SOURCE_PATH, "utf8");
+
+  assert.match(source, /useWorkspaceSessionStore/);
+  assert.match(source, /getSessionShellControls\(\)\.openSessionTab/);
+  assert.match(source, /useWorkspaceSessionStore\.getState\(\)\.openSession/);
+  assert.match(source, /getConversationById\(id\)/);
+});
+
+test("internal shell bridge can open a session without forcing a duplicate route push or active-tab switch", async () => {
+  const source = await readFile(SOURCE_PATH, "utf8");
+
+  assert.match(source, /openSession\(id, options\)/);
+  assert.match(source, /activate: options\?\.activate \?\? true/);
+  assert.match(source, /window\.location\.pathname !== href/);
+});

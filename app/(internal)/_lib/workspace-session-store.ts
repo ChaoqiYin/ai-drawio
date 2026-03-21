@@ -7,13 +7,17 @@ export type WorkspaceSessionSummary = {
   updatedAt: string;
 };
 
+type OpenSessionOptions = {
+  activate?: boolean;
+};
+
 type WorkspaceSessionState = {
   activeSessionId: string;
   openedSessions: WorkspaceSessionSummary[];
   activateSession: (sessionId: string) => void;
   closeSession: (sessionId: string) => void;
   enterSessionDetail: (session: WorkspaceSessionSummary) => void;
-  openSession: (session: WorkspaceSessionSummary) => void;
+  openSession: (session: WorkspaceSessionSummary, options?: OpenSessionOptions) => void;
   resetSessionDetail: () => void;
   updateSessionMeta: (
     sessionId: string,
@@ -47,13 +51,14 @@ function createState(set: StoreApi<WorkspaceSessionState>["setState"]): Workspac
         openedSessions: [session],
       });
     },
-    openSession: (session) => {
+    openSession: (session, options) => {
       set((state) => {
+        const shouldActivate = options?.activate ?? true;
         const existingIndex = state.openedSessions.findIndex((item) => item.id === session.id);
 
         if (existingIndex === -1) {
           return {
-            activeSessionId: session.id,
+            activeSessionId: shouldActivate ? session.id : state.activeSessionId || session.id,
             openedSessions: [...state.openedSessions, session],
           };
         }
@@ -65,7 +70,7 @@ function createState(set: StoreApi<WorkspaceSessionState>["setState"]): Workspac
         };
 
         return {
-          activeSessionId: session.id,
+          activeSessionId: shouldActivate ? session.id : state.activeSessionId,
           openedSessions: nextSessions,
         };
       });

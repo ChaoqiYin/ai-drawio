@@ -1,20 +1,8 @@
 "use client";
 
+import { getRequiredTauriInvoke } from "../../_lib/tauri-bridge.ts";
+
 const TRAY_RUNTIME_STATE_CHANGE_EVENT = "ai-drawio:tray-runtime-state-change";
-
-type TauriInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
-
-type TauriWindow = Window &
-  typeof globalThis & {
-    __TAURI_INTERNALS__?: {
-      invoke?: TauriInvoke;
-    };
-    __TAURI__?: {
-      core?: {
-        invoke?: TauriInvoke;
-      };
-    };
-  };
 
 export type TrayCloseBehavior = "hide_to_tray" | "quit";
 
@@ -24,30 +12,6 @@ export type TraySettingsState = {
   mainWindowVisible: boolean;
   closeBehavior: TrayCloseBehavior;
 };
-
-function getTauriInvoke(): TauriInvoke | null {
-  const tauriWindow = window as TauriWindow;
-
-  if (typeof tauriWindow.__TAURI_INTERNALS__?.invoke === "function") {
-    return tauriWindow.__TAURI_INTERNALS__.invoke;
-  }
-
-  if (typeof tauriWindow.__TAURI__?.core?.invoke === "function") {
-    return tauriWindow.__TAURI__.core.invoke;
-  }
-
-  return null;
-}
-
-function getRequiredTauriInvoke(): TauriInvoke {
-  const invoke = getTauriInvoke();
-
-  if (!invoke) {
-    throw new Error("Tauri desktop bridge is not available in this environment.");
-  }
-
-  return invoke;
-}
 
 export async function getTraySettings(): Promise<TraySettingsState> {
   const invoke = getRequiredTauriInvoke();
