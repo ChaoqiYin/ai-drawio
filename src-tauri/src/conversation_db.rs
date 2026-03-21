@@ -326,6 +326,7 @@ pub fn get_conversation_by_id(
     }))
 }
 
+#[cfg(test)]
 pub fn find_conversation_by_title(
     connection: &Connection,
     title: &str,

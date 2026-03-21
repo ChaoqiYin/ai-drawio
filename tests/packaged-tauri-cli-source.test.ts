@@ -39,6 +39,7 @@ test("packaged tauri cli uses rust dispatch and completion generation without pl
   assert.doesNotMatch(tauriConfig, /"plugins"\s*:\s*\{/);
   assert.doesNotMatch(tauriConfig, /"cli"\s*:/);
   assert.match(cliSchemaSource, /Command::new\("session"\)[\s\S]*Command::new\("open"\)/);
+  assert.match(cliSchemaSource, /Command::new\("session"\)[\s\S]*Command::new\("close"\)/);
   assert.match(cliSchemaSource, /assert!\(!help\.contains\("ai-drawio open"\)\);/);
   assert.match(packagedCliSource, /document\.svg/);
   assert.match(packagedCliSource, /document\.preview/);
@@ -83,6 +84,7 @@ test("package scripts keep direct tauri build entrypoints without wrapper shell 
   assert.match(readme, /ai-drawio status/);
   assert.match(readme, /ai-drawio session status <session-id>/);
   assert.match(readme, /ai-drawio session open <session-id>/);
+  assert.match(readme, /ai-drawio session close <session-id>/);
   assert.match(readme, /ai-drawio canvas document\.get <session-id>/);
   assert.match(readme, /ai-drawio canvas document\.preview <session-id> <output-directory>/);
   assert.match(readme, /ai-drawio canvas document\.preview <session-id> <output-directory> --page <page-number>/);

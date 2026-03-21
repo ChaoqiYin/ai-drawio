@@ -49,11 +49,19 @@ pub struct SessionRuntimeState {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCloseResult {
+    pub session_id: String,
+    pub status: String,
+}
+
 pub fn build_session_route(session_id: &str) -> String {
     format!("/session?id={session_id}")
 }
 
-pub fn extract_session_id_from_route(route: &str) -> Option<String> {
+#[cfg(test)]
+fn extract_session_id_from_route(route: &str) -> Option<String> {
     let query = route.strip_prefix("/session?")?;
 
     for pair in query.split('&') {
@@ -68,7 +76,8 @@ pub fn extract_session_id_from_route(route: &str) -> Option<String> {
     None
 }
 
-pub fn get_active_session_id(state: &ShellState) -> Option<String> {
+#[cfg(test)]
+fn get_active_session_id(state: &ShellState) -> Option<String> {
     let trimmed = state.session_id.trim();
     if !trimmed.is_empty() {
         return Some(trimmed.to_string());
@@ -77,7 +86,8 @@ pub fn get_active_session_id(state: &ShellState) -> Option<String> {
     extract_session_id_from_route(&state.route)
 }
 
-pub fn is_reusable_session_state(state: &ShellState) -> bool {
+#[cfg(test)]
+fn is_reusable_session_state(state: &ShellState) -> bool {
     get_active_session_id(state).is_some() && state.bridge_ready && state.frame_ready
 }
 
@@ -287,6 +297,105 @@ pub fn open_session(
         route: build_session_route(session_id),
         session_id: session_id.to_string(),
     }))
+}
+
+pub fn close_session(
+    app: &AppHandle,
+    bridge_state: &ScriptResultBridgeState,
+    session_id: &str,
+    timeout: Duration,
+) -> Result<SessionCloseResult, ControlError> {
+    show_main_window(app)?;
+
+    if !has_conversation(app, session_id)? {
+        return Err(ControlError::new(
+            "SESSION_NOT_FOUND",
+            format!("session '{session_id}' was not found in local storage"),
+        )
+        .with_details(Value::String(build_session_route(session_id))));
+    }
+
+    let session_id_json = serde_json::to_string(session_id)
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))?;
+    let value = eval_main_window_script_with_result(
+        app,
+        bridge_state,
+        &format!(
+            r#"
+return await (async () => {{
+  const closeSession = window.__AI_DRAWIO_SHELL__?.conversationStore?.closeSession;
+
+  if (typeof closeSession !== "function") {{
+    return {{
+      ok: false,
+      error: {{
+        code: "APP_NOT_READY",
+        message: "session close bridge is not available"
+      }}
+    }};
+  }}
+
+  try {{
+    const result = await closeSession({session_id_json});
+    return {{
+      ok: true,
+      value: result
+    }};
+  }} catch (error) {{
+    const errorObject = error && typeof error === "object" ? error : null;
+    const message = error instanceof Error ? error.message : String(error);
+    const code =
+      typeof errorObject?.code === "string" && errorObject.code.trim().length > 0
+        ? errorObject.code
+        : "APP_NOT_READY";
+    const details =
+      errorObject && "details" in errorObject ? errorObject.details ?? null : null;
+
+    return {{
+      ok: false,
+      error: {{
+        code,
+        details,
+        message
+      }}
+    }};
+  }}
+}})();
+"#
+        ),
+        timeout,
+    )
+    .map_err(|error| ControlError::new("APP_NOT_READY", error))?;
+
+    let Some(true) = value.get("ok").and_then(Value::as_bool) else {
+        let error = value.get("error").cloned().unwrap_or(Value::Null);
+        let code = error
+            .get("code")
+            .and_then(Value::as_str)
+            .unwrap_or("APP_NOT_READY");
+        let message = error
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("session close bridge rejected the request");
+        let details = error.get("details").cloned();
+
+        let control_error = match details {
+            Some(details) if !details.is_null() => ControlError::new(code, message).with_details(details),
+            _ => ControlError::new(code, message),
+        };
+
+        return Err(control_error);
+    };
+
+    let result = value.get("value").cloned().unwrap_or_else(|| {
+        json!({
+            "sessionId": session_id,
+            "status": "closed"
+        })
+    });
+
+    serde_json::from_value(result)
+        .map_err(|error| ControlError::new("INTERNAL_ERROR", error.to_string()))
 }
 
 pub fn require_session_ready(

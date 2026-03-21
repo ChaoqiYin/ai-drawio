@@ -6,6 +6,7 @@ pub const DEFAULT_TIMEOUT_MS: u64 = 15_000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandKind {
     ConversationCreate,
+    SessionClose,
     SessionList,
     SessionOpen,
     Status,
@@ -69,6 +70,7 @@ impl ControlRequest {
             "canvas.document.restore" => Ok(CommandKind::CanvasDocumentRestore),
             "canvas.document.svg" => Ok(CommandKind::CanvasDocumentSvg),
             "conversation.create" => Ok(CommandKind::ConversationCreate),
+            "session.close" => Ok(CommandKind::SessionClose),
             "session.list" => Ok(CommandKind::SessionList),
             "session.open" => Ok(CommandKind::SessionOpen),
             "status" => Ok(CommandKind::Status),
@@ -184,6 +186,7 @@ impl ControlRequest {
             }
             CommandKind::CanvasDocumentGet
             | CommandKind::CanvasDocumentSvg
+            | CommandKind::SessionClose
             | CommandKind::SessionOpen => {
                 self.require_session_id()?;
             }
@@ -295,6 +298,16 @@ mod tests {
             .expect_err("missing session id must fail");
 
         assert_eq!(error.code, "VALIDATION_FAILED");
+    }
+
+    #[test]
+    fn validates_session_close_requests() {
+        let mut request = base_request("session.close");
+        request.session_id = Some("sess-1".to_string());
+
+        let command = request.validate().expect("request should validate");
+
+        assert_eq!(command, CommandKind::SessionClose);
     }
 
     #[test]

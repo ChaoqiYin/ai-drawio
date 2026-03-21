@@ -63,6 +63,8 @@ Absolute-path example:
   Inspects whether the specified session is ready.
 - `ai-drawio session open <session-id>`
   Opens one persisted session by id and waits until it is ready.
+- `ai-drawio session close <session-id>`
+  Closes one already-opened session tab from the workspace detail page and returns an error if that session is not currently open there.
 - `ai-drawio canvas document.get <session-id>`
   Reads the specified draw.io document from the specified ready session.
 - `ai-drawio canvas document.svg <session-id> --output-file <path>`

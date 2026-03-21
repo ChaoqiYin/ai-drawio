@@ -5,7 +5,7 @@ pub fn build_cli_command() -> Command {
         .about("Open or control the AI Drawio desktop app from the terminal")
         .disable_help_subcommand(true)
         .after_help(
-            "Common commands:\n  ai-drawio status\n  ai-drawio session create\n  ai-drawio session open <session-id>\n  ai-drawio canvas document.get <session-id>\n  ai-drawio canvas document.apply <session-id> \"update layout\" --xml-file ./diagram.drawio",
+            "Common commands:\n  ai-drawio status\n  ai-drawio session create\n  ai-drawio session open <session-id>\n  ai-drawio session close <session-id>\n  ai-drawio canvas document.get <session-id>\n  ai-drawio canvas document.apply <session-id> \"update layout\" --xml-file ./diagram.drawio",
         )
         .subcommand(
             Command::new("status")
@@ -48,6 +48,20 @@ pub fn build_cli_command() -> Command {
                                 .index(1)
                                 .value_name("session-id")
                                 .help("Open the exact persisted session id")
+                                .required(true),
+                        ),
+                )
+                .subcommand(
+                    Command::new("close")
+                        .about("Close one opened local session tab")
+                        .after_help(
+                            "Provide the exact persisted session id.\n\nExample:\n  ai-drawio session close sess-123",
+                        )
+                        .arg(
+                            Arg::new("session-id")
+                                .index(1)
+                                .value_name("session-id")
+                                .help("Close the exact opened session id")
                                 .required(true),
                         ),
                 ),

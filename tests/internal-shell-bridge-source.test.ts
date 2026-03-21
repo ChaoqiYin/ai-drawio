@@ -22,6 +22,7 @@ test("internal shell bridge exposes shared session orchestration helpers", async
   assert.match(source, /hasConversation/);
   assert.match(source, /listConversations/);
   assert.match(source, /openSession/);
+  assert.match(source, /closeSession/);
   assert.match(source, /openSessionTab/);
   assert.match(source, /ensureSessionTab/);
   assert.match(source, /sessions:/);
@@ -47,4 +48,13 @@ test("internal shell bridge can open a session without forcing a duplicate route
   assert.match(source, /openSession\(id, options\)/);
   assert.match(source, /activate: options\?\.activate \?\? true/);
   assert.match(source, /window\.location\.pathname !== href/);
+});
+
+test("internal shell bridge can close only already-opened session tabs", async () => {
+  const source = await readFile(SOURCE_PATH, "utf8");
+
+  assert.match(source, /async closeSession\(id\)/);
+  assert.match(source, /useWorkspaceSessionStore\.getState\(\)\.openedSessions/);
+  assert.match(source, /SESSION_NOT_OPEN/);
+  assert.match(source, /useWorkspaceSessionStore\.getState\(\)\.closeSession\(id\)/);
 });

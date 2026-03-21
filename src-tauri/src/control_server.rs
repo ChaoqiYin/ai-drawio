@@ -143,6 +143,17 @@ fn handle_request(app: &AppHandle, request: ControlRequest) -> ControlResponse {
                     .map(|state| json!(state))
             })
         }
+        CommandKind::SessionClose => {
+            let session_id = request
+                .require_session_id()
+                .map_err(|error| error)
+                .map(str::to_string);
+
+            session_id.and_then(|session_id| {
+                session_runtime::close_session(app, &bridge_state, &session_id, timeout)
+                    .map(|result| json!(result))
+            })
+        }
         CommandKind::SessionList => session_runtime::list_sessions(app, &bridge_state, timeout)
             .map(|sessions| {
                 json!({

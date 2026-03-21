@@ -30,6 +30,9 @@ pub enum PackagedCliCommand {
     },
     SessionCreate,
     SessionList,
+    SessionClose {
+        session_id: String,
+    },
     SessionOpen {
         session_id: String,
     },
@@ -130,10 +133,13 @@ fn parse_matches(matches: &ArgMatches) -> Result<PackagedCliCommand, String> {
             Some(("status", status_matches)) => Ok(PackagedCliCommand::Status {
                 session_id: required_string_arg(status_matches, "session-id")?,
             }),
+            Some(("close", close_matches)) => Ok(PackagedCliCommand::SessionClose {
+                session_id: required_string_arg(close_matches, "session-id")?,
+            }),
             Some(("open", open_matches)) => Ok(PackagedCliCommand::SessionOpen {
                 session_id: required_string_arg(open_matches, "session-id")?,
             }),
-            _ => Err("session only supports create, list, status or open".to_string()),
+            _ => Err("session only supports create, list, status, close or open".to_string()),
         },
         Some(("canvas", submatches)) => match submatches.subcommand() {
             Some(("document.get", get_matches)) => Ok(PackagedCliCommand::CanvasDocumentGet {
@@ -220,6 +226,12 @@ pub fn build_request_for_command(
         PackagedCliCommand::SessionList => Ok(build_request(
             "session.list",
             None,
+            json!({}),
+            CONTROL_TIMEOUT_MS,
+        )),
+        PackagedCliCommand::SessionClose { session_id } => Ok(build_request(
+            "session.close",
+            Some(session_id.to_string()),
             json!({}),
             CONTROL_TIMEOUT_MS,
         )),
@@ -528,6 +540,7 @@ where
     ))
 }
 
+#[cfg(test)]
 fn response_indicates_running(response: &ControlResponse) -> bool {
     response
         .data
@@ -1296,6 +1309,7 @@ fn command_name(command: &PackagedCliCommand) -> &'static str {
         PackagedCliCommand::Status { .. } => "status",
         PackagedCliCommand::SessionCreate => "session.create",
         PackagedCliCommand::SessionList => "session.list",
+        PackagedCliCommand::SessionClose { .. } => "session.close",
         PackagedCliCommand::SessionOpen { .. } => "session.open",
         PackagedCliCommand::CanvasDocumentGet { .. } => "canvas.document.get",
         PackagedCliCommand::CanvasDocumentSvg { .. } => "canvas.document.svg",
@@ -1395,6 +1409,19 @@ mod tests {
         assert_eq!(
             command,
             PackagedCliCommand::SessionOpen {
+                session_id: "sess-1".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn parses_session_close_with_positional_session_id() {
+        let command =
+            parse_cli_args(&["session", "close", "sess-1"]).expect("session close should parse");
+
+        assert_eq!(
+            command,
+            PackagedCliCommand::SessionClose {
                 session_id: "sess-1".to_string()
             }
         );
@@ -1514,6 +1541,17 @@ mod tests {
     fn rejects_session_status_without_session_id() {
         let error = parse_cli_args(&["session", "status"])
             .expect_err("session status should require a session id");
+
+        assert!(
+            error.contains("session-id") || error.contains("required"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn rejects_session_close_without_session_id() {
+        let error = parse_cli_args(&["session", "close"])
+            .expect_err("session close should require a session id");
 
         assert!(
             error.contains("session-id") || error.contains("required"),
@@ -1883,6 +1921,21 @@ mod tests {
         .expect("session open request should build");
 
         assert_eq!(request.command, "session.open");
+        assert_eq!(request.payload, json!({}));
+        assert_eq!(request.session_id, Some("sess-1".to_string()));
+    }
+
+    #[test]
+    fn builds_session_close_request_with_session_id() {
+        let request = build_request_for_command(
+            &PackagedCliCommand::SessionClose {
+                session_id: "sess-1".to_string(),
+            },
+            None,
+        )
+        .expect("session close request should build");
+
+        assert_eq!(request.command, "session.close");
         assert_eq!(request.payload, json!({}));
         assert_eq!(request.session_id, Some("sess-1".to_string()));
     }
@@ -2500,6 +2553,9 @@ mod tests {
         let commands = [
             PackagedCliCommand::SessionCreate,
             PackagedCliCommand::SessionList,
+            PackagedCliCommand::SessionClose {
+                session_id: "sess-1".to_string(),
+            },
             PackagedCliCommand::SessionOpen {
                 session_id: "sess-1".to_string(),
             },

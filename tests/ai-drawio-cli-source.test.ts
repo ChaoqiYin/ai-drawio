@@ -16,6 +16,10 @@ const CLI_APPLY_REFERENCE_PATH = new URL(
   "../skills/ai-drawio-cli/references/canvas-document-apply.md",
   import.meta.url
 );
+const CLI_CLOSE_REFERENCE_PATH = new URL(
+  "../skills/ai-drawio-cli/references/session-close.md",
+  import.meta.url
+);
 const CLI_AGENT_PATH = new URL("../skills/ai-drawio-cli/agents/openai.yaml", import.meta.url);
 const CLI_SCHEMA_PATH = new URL("../src-tauri/src/cli_schema.rs", import.meta.url);
 
@@ -26,6 +30,7 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
     discoveryReferenceSource,
     previewReferenceSource,
     applyReferenceSource,
+    closeReferenceSource,
     agentSource,
     schemaSource
   ] = await Promise.all([
@@ -34,6 +39,7 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
     readFile(CLI_DISCOVERY_REFERENCE_PATH, "utf8"),
     readFile(CLI_PREVIEW_REFERENCE_PATH, "utf8"),
     readFile(CLI_APPLY_REFERENCE_PATH, "utf8"),
+    readFile(CLI_CLOSE_REFERENCE_PATH, "utf8"),
     readFile(CLI_AGENT_PATH, "utf8"),
     readFile(CLI_SCHEMA_PATH, "utf8")
   ]);
@@ -45,6 +51,7 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
   assert.match(skillSource, /Every `canvas document\.apply` command must include a required prompt argument with the user request summary\./);
   assert.match(skillSource, /Do not generate a `\.drawio` file unless the user explicitly asked for file output or the XML payload is too large for a safe inline command\./);
   assert.match(skillSource, /Use `session create` when the user needs a new ready session\./);
+  assert.match(skillSource, /If this skill opens or creates a session for a bounded task, close that same session with `session close <session-id>` after the full task is complete, unless the user explicitly wants the session kept open\./);
   assert.match(skillSource, /Do not execute any `ai-drawio` terminal command from this skill inside the default sandbox, including `status`, `session \*`, and `canvas document\.\*`\./);
   assert.match(skillSource, /Commands for different session IDs may run in parallel\./);
   assert.match(skillSource, /Commands that target the same session ID must run strictly serially\./);
@@ -56,7 +63,9 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
   assert.match(skillSource, /`bundle executable discovery` -> `references\/bundle-executable-discovery\.md`/);
   assert.doesNotMatch(skillSource, /launch installed app|references\/open\.md/);
   assert.match(skillSource, /`ai-drawio session create` -> `references\/session-create\.md`/);
+  assert.match(skillSource, /`ai-drawio session close` -> `references\/session-close\.md`/);
   assert.match(skillSource, /`ai-drawio canvas document\.preview` -> `references\/canvas-document-preview\.md`/);
+  assert.match(skillSource, /Do not prefer `session list` when another command already satisfies the task\./);
   assert.doesNotMatch(skillSource, /--session|--session-title|--title/);
   assert.doesNotMatch(skillSource, /conversation create/);
   assert.match(statusReferenceSource, /ai-drawio status/);
@@ -66,6 +75,9 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
   assert.match(discoveryReferenceSource, /mdfind/);
   assert.match(discoveryReferenceSource, /Do not fall back to PATH lookup/);
   assert.match(previewReferenceSource, /"\$AI_DRAWIO_BIN" canvas document\.preview sess-123/);
+  assert.match(closeReferenceSource, /"\$AI_DRAWIO_BIN" session close sess-123/);
+  assert.match(closeReferenceSource, /SESSION_NOT_OPEN/);
+  assert.match(closeReferenceSource, /Prefer this command for end-of-task cleanup unless the user explicitly wants the session kept open\./);
   assert.match(previewReferenceSource, /Every preview command must include the target session id as the first positional argument\./);
   assert.match(applyReferenceSource, /The prompt argument is required for every apply command\./);
   assert.match(applyReferenceSource, /Every apply command must include the target session id as the first positional argument\./);
@@ -75,11 +87,13 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
   assert.match(agentSource, /Always include the required prompt argument when running `ai-drawio canvas document\.apply`/);
   assert.match(agentSource, /Do not execute any `ai-drawio` terminal command from this skill inside the default sandbox/);
   assert.match(agentSource, /resolve the packaged `ai-drawio` executable as an absolute path before running commands/i);
-  assert.match(agentSource, /run commands for different session IDs in parallel only when they do not target the same session/);
+  assert.match(agentSource, /Run commands for different session IDs in parallel only when they do not target the same session/);
   assert.match(agentSource, /never run two `ai-drawio` commands concurrently against the same session ID/);
-  assert.match(agentSource, /launch the desktop app by executing the resolved packaged app path directly/i);
+  assert.match(agentSource, /Launch the desktop app itself by executing the resolved packaged app path directly when needed\./);
   assert.doesNotMatch(agentSource, /ai-drawio open/);
+  assert.match(agentSource, /Do not prefer `ai-drawio session list` when another command already satisfies the task\./);
   assert.match(agentSource, /If a command returns `APP_NOT_RUNNING`, or `ai-drawio status` reports `running: false`, execute the resolved packaged app path directly outside the sandbox and then continue with the original task instead of asking the user to launch the app manually/);
+  assert.match(agentSource, /After a bounded task is fully complete, close the corresponding task session with `ai-drawio session close <session-id>` unless the user explicitly wants that session kept open\./);
   assert.match(agentSource, /Use `ai-drawio canvas document\.preview <session-id>` for PNG preview export tasks/);
   assert.doesNotMatch(agentSource, /--session|--session-title|--title/);
   assert.match(schemaSource, /Arg::new\("session-id"\)\s*[\s\S]*\.index\(1\)/);

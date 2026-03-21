@@ -7,7 +7,7 @@ description: Use when a draw.io, diagram-editing, or canvas-document task should
 
 ## Overview
 
-Use this skill for draw.io work that must go through the installed `ai-drawio` CLI. Treat live canvas updates as completion unless the user explicitly wants file-only output.
+Use this skill for draw.io work that must go through the installed `ai-drawio` CLI. Treat a live canvas result as completion unless the user explicitly wants file-only output.
 
 ## Core Rules
 
@@ -25,12 +25,13 @@ Use this skill for draw.io work that must go through the installed `ai-drawio` C
 - `ai-drawio status` is detection-only and must never auto-launch the desktop app.
 - If a command returns `APP_NOT_RUNNING`, or `status` returns `running: false`, execute the resolved packaged app path directly outside the sandbox and then continue with the original task.
 - Unless the user explicitly asks to close or quit the app, do not close the desktop app after any CLI command completes.
+- If this skill opens or creates a session for a bounded task, close that same session with `session close <session-id>` after the full task is complete, unless the user explicitly wants the session kept open.
 
 ## Session Concurrency
 
 - Commands for different session IDs may run in parallel.
 - Commands that target the same session ID must run strictly serially.
-- Treat `session open <session-id>` and every `canvas document.* <session-id>` command as work that locks that session until the command completes.
+- Treat `session open <session-id>`, `session close <session-id>`, and every `canvas document.* <session-id>` command as work that locks that session until the command completes.
 - `session create` is serial for the new session it returns. After it completes, use the returned session ID for any later locking decisions.
 - Do not use a global one-command-at-a-time rule when separate session IDs are available.
 
@@ -40,8 +41,9 @@ Use this skill for draw.io work that must go through the installed `ai-drawio` C
 - `status`: only when you need to know whether the desktop app is running.
 - `session status <session-id>`: only when you need to know whether one session is ready.
 - `session create`: only when the user explicitly needs a new ready session.
-- `session list`: only when the user explicitly needs persisted session IDs.
+- `session list`: not a preferred default; use it when the user needs persisted session IDs or session discovery is genuinely required.
 - `session open <session-id>`: only when the user explicitly wants a session opened or when later session-targeted work must ensure readiness first.
+- `session close <session-id>`: use as the session cleanup step after the full bounded task is complete, unless the user explicitly wants that session kept open.
 - `canvas document.get <session-id>`: default entry point when you need the current XML first.
 - `canvas document.svg <session-id>`: direct SVG export or inspection.
 - `canvas document.preview <session-id>`: PNG preview export.
@@ -50,32 +52,25 @@ Use this skill for draw.io work that must go through the installed `ai-drawio` C
 
 ## Minimal Path Rule
 
-- Default to one `ai-drawio` command, not two.
+- Prefer one `ai-drawio` command when one command can finish the job.
 - Do not run `ai-drawio status` as a routine pre-check before every command.
-- Do not run `session list` unless the user explicitly needs the persisted session list.
-- If the user asks to draw in draw.io, default to `canvas document.apply`, not file generation.
-- If XML authoring is needed before execution, treat that XML as an intermediate artifact and continue to the apply command.
-- For canvas reads, use `canvas document.get <session-id>`.
-- For SVG export, use `canvas document.svg <session-id>`.
-- For PNG export, use `canvas document.preview <session-id>`.
-- For forward edits, use `canvas document.apply <session-id> <prompt>`.
-- For rollback, use `canvas document.restore <session-id>`.
+- Do not prefer `session list` when another command already satisfies the task.
+- For live drawing requests, default to `canvas document.apply`, not file generation.
+- Treat authored XML as an intermediate artifact and continue to the apply command when the user wants a live result.
+- Use `canvas document.get`, `canvas document.svg`, `canvas document.preview`, `canvas document.apply`, or `canvas document.restore` directly when each one already matches the task.
 - Only use a two-step path such as `canvas document.get <session-id>` followed by `canvas document.apply <session-id> <prompt>` when the task truly needs the current XML first.
-- If one request needs multiple diagrams rendered together, prefer one XML document containing multiple diagrams or pages over several separate XML payloads.
+- If one request needs multiple diagrams together, prefer one XML document with multiple diagrams or pages over several separate payloads.
 
 ## Workflow
 
 1. Pick the smallest command that can satisfy the request.
-2. Resolve the packaged executable path once, then keep using that same absolute path for every later command in the task.
-3. If the task targets an existing session, require the explicit `session-id`.
-4. If the user needs a new workspace, use `session create`, capture the returned `sessionId`, and use that ID afterward.
-5. If the chosen command returns `APP_NOT_RUNNING`, or an intentional `status` check reports `running: false`, execute the resolved packaged app path directly outside the sandbox and then continue with the original task.
-6. Parallelize only across different session IDs.
-7. Keep same-session commands strictly serial.
-8. Read XML first only when the edit actually depends on the current document.
-9. If the user asked to draw or render in draw.io, use `canvas document.apply <session-id> <prompt>` unless the user explicitly requested file-only output.
-10. Keep XML in memory by default. Only use `--xml-file` when the XML already exists on disk or an oversized inline payload requires a temporary file.
-11. Read only the single matching command reference file when exact command syntax or argument shape matters.
+2. Resolve the packaged executable path once and keep using that absolute path for the rest of the task.
+3. For an existing session, require the explicit `session-id`. For a new workspace, use `session create` and keep the returned `sessionId`.
+4. If the chosen command returns `APP_NOT_RUNNING`, or an intentional `status` check reports `running: false`, execute the resolved packaged app path directly outside the sandbox and continue.
+5. Parallelize only across different session IDs. Keep same-session commands strictly serial.
+6. Read XML first only when the edit depends on the current document.
+7. Keep XML in memory by default. Use `--xml-file` only when the XML already exists on disk or an oversized inline payload requires a temporary file.
+8. After the full bounded task is complete, close the task session with `session close <session-id>` unless the user explicitly asked to keep it open or the session should remain available beyond this task.
 
 ## Progressive Reference Loading
 
@@ -87,6 +82,7 @@ Use this skill for draw.io work that must go through the installed `ai-drawio` C
   - `ai-drawio session create` -> `references/session-create.md`
   - `ai-drawio session list` -> `references/session-list.md`
   - `ai-drawio session open` -> `references/session-open.md`
+  - `ai-drawio session close` -> `references/session-close.md`
   - `ai-drawio canvas document.get` -> `references/canvas-document-get.md`
   - `ai-drawio canvas document.svg` -> `references/canvas-document-svg.md`
   - `ai-drawio canvas document.preview` -> `references/canvas-document-preview.md`

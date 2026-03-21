@@ -63,6 +63,10 @@ type ShellConversationStore = {
       title: string;
     }>
   >;
+  closeSession: (id: string) => Promise<{
+    sessionId: string;
+    status: string;
+  }>;
   openSession: (id: string, options?: { activate?: boolean }) => Promise<{
     href: string;
     id: string;
@@ -170,6 +174,25 @@ export default function InternalShellBridge() {
           const conversation = await getConversationById(id);
 
           return conversation ?? null;
+        },
+        async closeSession(id) {
+          const openedSessions = useWorkspaceSessionStore.getState().openedSessions;
+          const isOpen = openedSessions.some((session) => session.id === id);
+
+          if (!isOpen) {
+            const error = new Error(`session '${id}' is not currently opened`) as Error & {
+              code?: string;
+            };
+            error.code = "SESSION_NOT_OPEN";
+            throw error;
+          }
+
+          useWorkspaceSessionStore.getState().closeSession(id);
+
+          return {
+            sessionId: id,
+            status: "closed"
+          };
         },
         async openSession(id, options) {
           const href = buildSessionHref(id);

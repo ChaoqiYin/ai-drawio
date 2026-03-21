@@ -17,11 +17,11 @@ test("draw.io execution skills require live apply instead of stopping at file ge
 
   assert.match(
     cliSkill,
-    /If XML authoring is needed before execution, treat that XML as an intermediate artifact and continue to the apply command\./
+    /Treat authored XML as an intermediate artifact and continue to the apply command when the user wants a live result\./
   );
   assert.match(
     cliAgent,
-    /After preparing XML, continue in the same run by executing `ai-drawio canvas document\.apply`/
+    /If the user asks for a live draw\.io result, treat completion as running `ai-drawio canvas document\.apply <session-id> <prompt>`/
   );
   assert.match(
     diagrammingSkill,
