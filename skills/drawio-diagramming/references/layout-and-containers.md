@@ -23,9 +23,13 @@ Use this form:
 Do not use self-closing edge cells for real connectors. They are unreliable and may render incorrectly.
 
 Draw.io does not provide collision-free routing automatically. Plan the layout before drawing many edges.
+Prefer routing that avoids connector crossings entirely; if a crossing is unavoidable, keep the count and visual impact as low as possible.
 
 ## Spacing and ports
 
+- Do not let ordinary nodes overlap other ordinary nodes or connector segments.
+- Use containers to hold child content, but do not treat that containment as a node-overlap violation.
+- Plan layers, columns, and connector channels before compacting the layout.
 - Use `edgeStyle=orthogonalEdgeStyle` for most right-angle connectors.
 - Space nodes generously. A good default is about `200px` horizontal and `120px` vertical.
 - Keep at least `60px` between nearby nodes even in compact layouts.
@@ -40,6 +44,7 @@ Draw.io does not provide collision-free routing automatically. Plan the layout b
 ## Waypoints
 
 Add explicit waypoints when automatic routing would overlap other connectors or pass too close to shapes.
+Do not rely on automatic orthogonal routing alone for dense or compact diagrams; give critical edges explicit exits, entries, and waypoints.
 
 ```xml
 <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="a" target="b">
@@ -53,6 +58,14 @@ Add explicit waypoints when automatic routing would overlap other connectors or 
 ```
 
 Prefer a small number of deliberate bends over many short segments.
+For multi-edge hubs, separate outgoing edges into distinct channels before they descend toward lower layers.
+
+## Validation
+
+For live canvas work, validate geometry after rendering: a successful apply or preview only proves the document renders, not that overlaps are gone.
+- Re-check whether any connector now passes through a node area.
+- Re-check whether several edges share one crowded channel directly under or beside a node.
+- If needed, inspect exported SVG paths to confirm where the rendered bends actually land.
 
 ## Containers and groups
 

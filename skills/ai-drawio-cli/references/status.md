@@ -12,3 +12,4 @@ Use only to check whether the desktop control service is already running.
 - A non-running app returns JSON with `running: false`.
 - Do not execute this command inside the default sandbox.
 - If `running: false`, the skill should follow by executing the resolved packaged app path directly outside the sandbox instead of asking the user to open the app manually.
+- Apply the same recovery step when another `ai-drawio` command returns `APP_NOT_RUNNING`.

@@ -1,6 +1,6 @@
 # `ai-drawio session close`
 
-Use this command as the session cleanup step after a bounded task is fully complete.
+Use this command as the session cleanup step after a bounded task is fully complete only when the current app state is tray state.
 
 ## Command
 
@@ -12,4 +12,4 @@ Use this command as the session cleanup step after a bounded task is fully compl
 - This command closes only an already-opened session tab in the workspace detail page.
 - If the persisted session exists but is not currently open in the detail page, this command returns `SESSION_NOT_OPEN`.
 - If the persisted session does not exist in local storage, this command returns `SESSION_NOT_FOUND`.
-- Prefer this command for end-of-task cleanup unless the user explicitly wants the session kept open.
+- Prefer this command for end-of-task cleanup only when the current app state is tray state, unless the user explicitly wants the session kept open.
