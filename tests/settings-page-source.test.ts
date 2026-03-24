@@ -14,6 +14,10 @@ const SETTINGS_COMPONENT_PATH = new URL(
   "../app/(internal)/_components/settings-page.tsx",
   import.meta.url
 );
+const APP_VERSION_HELPER_PATH = new URL(
+  "../app/(internal)/_lib/app-version.ts",
+  import.meta.url
+);
 const TAURI_CLI_INSTALL_PATH = new URL(
   "../app/(internal)/_lib/tauri-cli-install.ts",
   import.meta.url
@@ -32,6 +36,7 @@ test("home page links to settings and settings page renders cli integration acti
   assert.match(settingsSource, /useRouter/);
   assert.match(settingsSource, /InternalTopNavigation/);
   assert.match(settingsSource, /InternalBreadcrumb/);
+  assert.match(settingsSource, /getCurrentAppVersionDetails/);
   assert.match(settingsSource, /const handleNavigateBack = \(\): void => \{/);
   assert.match(settingsSource, /router\.push\("\/"\)/);
   assert.match(settingsSource, /<div className=\{shellClassName\}>/);
@@ -54,13 +59,27 @@ test("home page links to settings and settings page renders cli integration acti
   );
   assert.match(settingsSource, /data-layout="settings-top-nav-body"/);
   assert.match(settingsSource, /dataLayout="settings-breadcrumb"/);
+  assert.match(settingsSource, /data-layout="settings-version"/);
+  assert.match(settingsSource, /data-layout="settings-version-debug"/);
   assert.match(settingsSource, /const breadcrumbRoutes:\s*InternalBreadcrumbRoute\[\]\s*=\s*\[/);
   assert.match(settingsSource, /breadcrumbName: "首页"/);
   assert.match(settingsSource, /breadcrumbName: "设置"/);
+  assert.match(settingsSource, /const \[currentVersion, setCurrentVersion\] = useState\(""\)/);
+  assert.match(settingsSource, /const \[versionDebugSource, setVersionDebugSource\] = useState\(""\)/);
+  assert.match(settingsSource, /const \[versionDebugError, setVersionDebugError\] = useState\(""\)/);
+  assert.match(settingsSource, /const isVersionDebugVisible = process\.env\.NODE_ENV !== "production";/);
+  assert.match(settingsSource, /void getCurrentAppVersionDetails\(\)/);
+  assert.match(settingsSource, /当前版本/);
+  assert.match(settingsSource, /v\{currentVersion\}/);
+  assert.match(settingsSource, /版本调试/);
   assert.match(settingsSource, /router\.push\('\/'\)|router\.push\("\/"\)/);
   assert.match(
     settingsSource,
     /<InternalTopNavigation[\s\S]*content=\{\s*<div[\s\S]*data-layout="settings-top-nav-body"[\s\S]*<InternalBreadcrumb[\s\S]*dataLayout="settings-breadcrumb"[\s\S]*routes=\{breadcrumbRoutes\}/
+  );
+  assert.match(
+    settingsSource,
+    /<InternalTopNavigation[\s\S]*actions=\{[\s\S]*data-layout="settings-version"[\s\S]*当前版本[\s\S]*data-layout="settings-version-debug"[\s\S]*版本调试[\s\S]*versionDebugSource[\s\S]*\}[\s\S]*content=/
   );
   assert.match(settingsSource, /getTraySettings/);
   assert.match(settingsSource, /setTrayEnabled/);
@@ -128,12 +147,16 @@ test("home page links to settings and settings page renders cli integration acti
 });
 
 test("settings page no longer depends on tauri cli install helpers", async () => {
-  const settingsSource = await readFile(SETTINGS_COMPONENT_PATH, "utf8");
+  const [settingsSource, versionHelperSource] = await Promise.all([
+    readFile(SETTINGS_COMPONENT_PATH, "utf8"),
+    readFile(APP_VERSION_HELPER_PATH, "utf8"),
+  ]);
 
   await assert.rejects(() => access(TAURI_CLI_INSTALL_PATH));
   assert.doesNotMatch(settingsSource, /tauri-cli-install/);
   assert.doesNotMatch(settingsSource, /CliInstallStatus/);
   assert.doesNotMatch(settingsSource, /CliInstallResult/);
+  assert.match(versionHelperSource, /@tauri-apps\/api\/app/);
 });
 
 function sourceSafe(source: string): string {
