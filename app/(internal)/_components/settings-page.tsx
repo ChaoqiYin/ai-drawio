@@ -10,7 +10,7 @@ import {
   setTrayEnabled,
   type TraySettingsState,
 } from "../_lib/tauri-tray-settings";
-import { getCurrentAppVersionDetails } from "../_lib/app-version";
+import { getCurrentAppVersion } from "../_lib/app-version";
 import { InternalBreadcrumb, type InternalBreadcrumbRoute } from "./internal-breadcrumb";
 import { InternalTopNavigation } from "./internal-top-navigation";
 
@@ -25,8 +25,6 @@ const { Title } = Typography;
 export default function SettingsPage() {
   const router = useRouter();
   const [currentVersion, setCurrentVersion] = useState("");
-  const [versionDebugSource, setVersionDebugSource] = useState("");
-  const [versionDebugError, setVersionDebugError] = useState("");
   const [traySettings, setTraySettings] = useState<TraySettingsState>({
     enabled: false,
     trayVisible: false,
@@ -36,28 +34,19 @@ export default function SettingsPage() {
   const [isLoadingTray, setIsLoadingTray] = useState(true);
   const [isTogglingTray, setIsTogglingTray] = useState(false);
   const [trayError, setTrayError] = useState("");
-  const isVersionDebugVisible = process.env.NODE_ENV !== "production";
 
   useEffect(() => {
     let cancelled = false;
 
-    void getCurrentAppVersionDetails()
-      .then((versionDetails) => {
+    void getCurrentAppVersion()
+      .then((nextVersion) => {
         if (!cancelled) {
-          setCurrentVersion(versionDetails.version);
-          setVersionDebugSource(versionDetails.source);
-          setVersionDebugError(versionDetails.error ?? "");
-
-          if (process.env.NODE_ENV !== "production") {
-            console.info("[settings-version]", versionDetails);
-          }
+          setCurrentVersion(nextVersion);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setCurrentVersion("");
-          setVersionDebugSource("");
-          setVersionDebugError("unknown-error");
         }
       });
 
@@ -157,19 +146,9 @@ export default function SettingsPage() {
         <InternalTopNavigation
           onBack={handleNavigateBack}
           actions={
-            currentVersion || isVersionDebugVisible ? (
-              <div className="flex flex-col items-end gap-0.5 text-right">
-                {currentVersion ? (
-                  <div className="text-[12px] text-[var(--color-text-3)]" data-layout="settings-version">
-                    当前版本 v{currentVersion}
-                  </div>
-                ) : null}
-                {isVersionDebugVisible ? (
-                  <div className="text-[11px] text-[var(--color-text-3)]" data-layout="settings-version-debug">
-                    版本调试 source={versionDebugSource || "unresolved"}
-                    {versionDebugError ? ` error=${versionDebugError}` : ""}
-                  </div>
-                ) : null}
+            currentVersion ? (
+              <div className="text-[12px] text-[var(--color-text-3)]" data-layout="settings-version">
+                当前版本 v{currentVersion}
               </div>
             ) : null
           }

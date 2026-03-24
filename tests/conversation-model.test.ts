@@ -8,7 +8,7 @@ import {
   createCanvasHistoryEntry,
   createConversationDraft,
   getConversationPreview,
-  sortConversationsByUpdatedAt
+  sortConversationsByCreatedAt
 } from "../app/(internal)/_lib/conversation-model.ts";
 import { normalizeCanvasHistoryPreviewPages } from "../app/(internal)/_lib/canvas-history-preview.ts";
 
@@ -25,11 +25,23 @@ test("createConversationDraft returns a usable local record", () => {
   assert.equal("documentXml" in draft, false);
 });
 
-test("sortConversationsByUpdatedAt orders descending", () => {
-  const result = sortConversationsByUpdatedAt([
-    { id: "a", updatedAt: "2026-03-10T10:00:00.000Z" },
-    { id: "b", updatedAt: "2026-03-12T10:00:00.000Z" },
-    { id: "c", updatedAt: "2026-03-11T10:00:00.000Z" }
+test("sortConversationsByCreatedAt orders descending", () => {
+  const result = sortConversationsByCreatedAt([
+    {
+      id: "a",
+      createdAt: "2026-03-10T10:00:00.000Z",
+      updatedAt: "2026-03-12T10:00:00.000Z"
+    },
+    {
+      id: "b",
+      createdAt: "2026-03-12T10:00:00.000Z",
+      updatedAt: "2026-03-10T10:00:00.000Z"
+    },
+    {
+      id: "c",
+      createdAt: "2026-03-11T10:00:00.000Z",
+      updatedAt: "2026-03-11T10:00:00.000Z"
+    }
   ]);
 
   assert.deepEqual(result.map((item) => item.id), ["b", "c", "a"]);

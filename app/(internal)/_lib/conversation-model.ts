@@ -79,11 +79,11 @@ export function createConversationSummaryRecord(
   };
 }
 
-export function sortConversationsByUpdatedAt<T extends { updatedAt: string }>(
+export function sortConversationsByCreatedAt<T extends { createdAt: string }>(
   conversations: T[]
 ): T[] {
   return [...conversations].sort((left, right) => {
-    return right.updatedAt.localeCompare(left.updatedAt);
+    return right.createdAt.localeCompare(left.createdAt);
   });
 }
 

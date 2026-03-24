@@ -7,21 +7,16 @@ const APP_VERSION_HELPER_PATH = new URL(
   import.meta.url
 );
 
-test("app version helper exposes version source details and keeps a tauri config fallback", async () => {
+test("app version helper keeps a tauri config fallback without exposing debug-only details", async () => {
   const source = await readFile(APP_VERSION_HELPER_PATH, "utf8");
 
   assert.match(source, /from "@tauri-apps\/api\/app"/);
   assert.match(source, /import tauriConfig from "\.\.\/\.\.\/\.\.\/src-tauri\/tauri\.conf\.json"/);
   assert.match(source, /const FALLBACK_APP_VERSION = tauriConfig\.version;/);
   assert.doesNotMatch(source, /packageJson/);
-  assert.match(source, /export type AppVersionDetails = \{/);
-  assert.match(source, /source: "tauri-runtime" \| "tauri-config";/);
-  assert.match(source, /error: string \| null;/);
-  assert.match(source, /export async function getCurrentAppVersionDetails\(\): Promise<AppVersionDetails>/);
-  assert.match(source, /source: "tauri-runtime"/);
-  assert.match(source, /source: "tauri-config"/);
-  assert.match(source, /error: nextError instanceof Error \? nextError\.message : "unknown-error"/);
   assert.match(source, /export async function getCurrentAppVersion\(\): Promise<string>/);
-  assert.match(source, /const versionDetails = await getCurrentAppVersionDetails\(\);/);
-  assert.match(source, /return versionDetails\.version;/);
+  assert.match(source, /const runtimeVersion = await getVersion\(\);/);
+  assert.match(source, /return FALLBACK_APP_VERSION;/);
+  assert.doesNotMatch(source, /AppVersionDetails/);
+  assert.doesNotMatch(source, /getCurrentAppVersionDetails/);
 });

@@ -36,7 +36,7 @@ test("home page links to settings and settings page renders cli integration acti
   assert.match(settingsSource, /useRouter/);
   assert.match(settingsSource, /InternalTopNavigation/);
   assert.match(settingsSource, /InternalBreadcrumb/);
-  assert.match(settingsSource, /getCurrentAppVersionDetails/);
+  assert.match(settingsSource, /getCurrentAppVersion/);
   assert.match(settingsSource, /const handleNavigateBack = \(\): void => \{/);
   assert.match(settingsSource, /router\.push\("\/"\)/);
   assert.match(settingsSource, /<div className=\{shellClassName\}>/);
@@ -60,18 +60,13 @@ test("home page links to settings and settings page renders cli integration acti
   assert.match(settingsSource, /data-layout="settings-top-nav-body"/);
   assert.match(settingsSource, /dataLayout="settings-breadcrumb"/);
   assert.match(settingsSource, /data-layout="settings-version"/);
-  assert.match(settingsSource, /data-layout="settings-version-debug"/);
   assert.match(settingsSource, /const breadcrumbRoutes:\s*InternalBreadcrumbRoute\[\]\s*=\s*\[/);
   assert.match(settingsSource, /breadcrumbName: "首页"/);
   assert.match(settingsSource, /breadcrumbName: "设置"/);
   assert.match(settingsSource, /const \[currentVersion, setCurrentVersion\] = useState\(""\)/);
-  assert.match(settingsSource, /const \[versionDebugSource, setVersionDebugSource\] = useState\(""\)/);
-  assert.match(settingsSource, /const \[versionDebugError, setVersionDebugError\] = useState\(""\)/);
-  assert.match(settingsSource, /const isVersionDebugVisible = process\.env\.NODE_ENV !== "production";/);
-  assert.match(settingsSource, /void getCurrentAppVersionDetails\(\)/);
+  assert.match(settingsSource, /void getCurrentAppVersion\(\)/);
   assert.match(settingsSource, /当前版本/);
   assert.match(settingsSource, /v\{currentVersion\}/);
-  assert.match(settingsSource, /版本调试/);
   assert.match(settingsSource, /router\.push\('\/'\)|router\.push\("\/"\)/);
   assert.match(
     settingsSource,
@@ -79,7 +74,7 @@ test("home page links to settings and settings page renders cli integration acti
   );
   assert.match(
     settingsSource,
-    /<InternalTopNavigation[\s\S]*actions=\{[\s\S]*data-layout="settings-version"[\s\S]*当前版本[\s\S]*data-layout="settings-version-debug"[\s\S]*版本调试[\s\S]*versionDebugSource[\s\S]*\}[\s\S]*content=/
+    /<InternalTopNavigation[\s\S]*actions=\{[\s\S]*data-layout="settings-version"[\s\S]*当前版本[\s\S]*currentVersion[\s\S]*\}[\s\S]*content=/
   );
   assert.match(settingsSource, /getTraySettings/);
   assert.match(settingsSource, /setTrayEnabled/);
@@ -122,6 +117,11 @@ test("home page links to settings and settings page renders cli integration acti
   assert.doesNotMatch(settingsSource, /debug instance=/);
   assert.doesNotMatch(settingsSource, /render state=/);
   assert.doesNotMatch(settingsSource, /dom text=/);
+  assert.doesNotMatch(settingsSource, /版本调试/);
+  assert.doesNotMatch(settingsSource, /settings-version-debug/);
+  assert.doesNotMatch(settingsSource, /versionDebugSource/);
+  assert.doesNotMatch(settingsSource, /versionDebugError/);
+  assert.doesNotMatch(settingsSource, /isVersionDebugVisible/);
   assert.doesNotMatch(settingsSource, /CLI Integration|CLI 集成/);
   assert.doesNotMatch(settingsSource, /接入终端环境/);
   assert.doesNotMatch(settingsSource, /安装 ai-drawio 命令/);

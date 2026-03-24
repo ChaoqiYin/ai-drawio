@@ -6,7 +6,7 @@ import {
   createConversationMessageRecord,
   createConversationSummaryRecord,
   createWelcomeMessage,
-  sortConversationsByUpdatedAt,
+  sortConversationsByCreatedAt,
   type CanvasHistoryEntry,
   type CanvasHistorySource,
   type ConversationMessage,
@@ -324,7 +324,7 @@ async function listConversationSummaries(): Promise<ConversationSummaryRecord[]>
       stores[CONVERSATION_STORE_NAME].getAll() as IDBRequest<ConversationSummaryRecord[]>
     );
 
-    return sortConversationsByUpdatedAt(summaries);
+    return sortConversationsByCreatedAt(summaries);
   });
 }
 

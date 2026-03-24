@@ -585,7 +585,7 @@ mod tests {
     }
 
     #[test]
-    fn list_session_entries_reads_sqlite_summaries_in_updated_order() {
+    fn list_session_entries_reads_sqlite_summaries_in_created_order() {
         let connection = Connection::open_in_memory().expect("in-memory sqlite should open");
 
         conversation_db::insert_conversation_summary(
@@ -593,7 +593,7 @@ mod tests {
             &ConversationSummaryRow {
                 id: "session-1".to_string(),
                 title: "Alpha".to_string(),
-                created_at: "2026-03-20T10:00:00Z".to_string(),
+                created_at: "2026-03-20T11:00:00Z".to_string(),
                 updated_at: "2026-03-20T10:00:00Z".to_string(),
             },
         )
@@ -603,7 +603,7 @@ mod tests {
             &ConversationSummaryRow {
                 id: "session-2".to_string(),
                 title: "Beta".to_string(),
-                created_at: "2026-03-20T11:00:00Z".to_string(),
+                created_at: "2026-03-20T10:00:00Z".to_string(),
                 updated_at: "2026-03-20T12:00:00Z".to_string(),
             },
         )
@@ -615,12 +615,12 @@ mod tests {
             entries,
             vec![
                 SessionListEntry {
-                    id: "session-2".to_string(),
-                    title: "Beta".to_string(),
-                },
-                SessionListEntry {
                     id: "session-1".to_string(),
                     title: "Alpha".to_string(),
+                },
+                SessionListEntry {
+                    id: "session-2".to_string(),
+                    title: "Beta".to_string(),
                 },
             ]
         );

@@ -162,8 +162,8 @@ fn initialize_schema(connection: &Connection) -> rusqlite::Result<()> {
             related_message_id TEXT
         );
 
-        CREATE INDEX IF NOT EXISTS conversations_updated_at_idx
-            ON conversations(updated_at DESC, id);
+        CREATE INDEX IF NOT EXISTS conversations_created_at_idx
+            ON conversations(created_at DESC, id);
         CREATE INDEX IF NOT EXISTS conversations_normalized_title_idx
             ON conversations(normalized_title);
         CREATE INDEX IF NOT EXISTS messages_conversation_id_idx
@@ -345,7 +345,7 @@ pub fn find_conversation_by_title(
             SELECT id, title, created_at, updated_at
             FROM conversations
             WHERE normalized_title = ?1
-            ORDER BY updated_at DESC, id ASC
+            ORDER BY created_at DESC, id ASC
             LIMIT 1
             ",
             params![normalized_title],
@@ -784,7 +784,7 @@ pub fn list_conversation_summaries(
                 SELECT id, title, created_at, updated_at
                 FROM conversations
                 WHERE normalized_title LIKE ?1
-                ORDER BY updated_at DESC, id ASC
+                ORDER BY created_at DESC, id ASC
                 LIMIT ?2 OFFSET ?3
                 ",
             )
@@ -809,7 +809,7 @@ pub fn list_conversation_summaries(
                 "
                 SELECT id, title, created_at, updated_at
                 FROM conversations
-                ORDER BY updated_at DESC, id ASC
+                ORDER BY created_at DESC, id ASC
                 LIMIT ?1 OFFSET ?2
                 ",
             )
@@ -883,7 +883,7 @@ mod tests {
                     'conversations',
                     'messages',
                     'canvas_history',
-                    'conversations_updated_at_idx',
+                    'conversations_created_at_idx',
                     'conversations_normalized_title_idx',
                     'messages_conversation_id_idx',
                     'canvas_history_conversation_id_idx'
@@ -904,8 +904,8 @@ mod tests {
                 "canvas_history",
                 "canvas_history_conversation_id_idx",
                 "conversations",
+                "conversations_created_at_idx",
                 "conversations_normalized_title_idx",
-                "conversations_updated_at_idx",
                 "messages",
                 "messages_conversation_id_idx",
             ]
