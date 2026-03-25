@@ -25,18 +25,10 @@ This skill is content-only. It does not define task routing, file-output policy,
 3. Use `Quick Guidance` to shape node placement, spacing, exits, entries, and routing before finalizing XML content.
 4. Author or patch the smallest valid XML section that solves the content problem.
 5. Prefer solving routing problems by improving node placement, column structure, and spacing before adding extra edge complexity.
-6. Validate the invariants before returning the XML content.
+6. Validate the invariants below and run the checks in `references/layout-and-containers.md` Validation section before returning the XML content.
 
 ## Invariants
 
-- Keep the document wrapper intact when working with a full `.drawio` file.
-- Ensure each diagram page contains a valid `mxGraphModel` root structure.
-- Keep `mxCell` IDs unique within the diagram.
-- Use the correct `parent` for every vertex and edge.
-- Give every edge an expanded `mxGeometry` child with `relative="1"` and `as="geometry"`.
-- Use container parent-child relationships instead of visually stacking shapes.
-- Escape XML special characters in attribute values.
-- Avoid illegal XML comments such as `<!-- bad -- comment -->`.
 - Keep arrow direction aligned with the final segment direction at the target end of the connector.
 - If a connector enters from the left or right side of a shape, make the final segment horizontal unless the user explicitly wants otherwise.
 - If a connector enters from the top or bottom side of a shape, make the final segment vertical unless the user explicitly wants otherwise.
@@ -44,16 +36,10 @@ This skill is content-only. It does not define task routing, file-output policy,
 ## Quick Guidance
 
 - Unless the user explicitly says which objects may overlap, treat overlap-free layout as a required layout property rather than a preference.
-- By default, do not allow ordinary shapes to overlap other ordinary shapes or connector paths.
-- By default, do not allow connector paths or arrowheads to pass through ordinary shapes.
 - By default, do not allow important connector paths to visually collapse onto the same narrow channel when separate routing would be clearer.
 - Treat containers as layout boundaries rather than overlap violations for their child content.
 - Minimize connector crossings by default and accept them only when the alternative would make the layout less readable.
-- Plan layout in layers, columns, and connector channels before finalizing node positions or edge routing.
 - Prefer simple geometry and explicit waypoints over clever style combinations.
-- Increase node spacing before adding routing complexity.
-- For dense or compact diagrams, use explicit exits, entries, and waypoints for critical edges instead of relying on automatic orthogonal routing alone.
-- Use `orthogonalEdgeStyle` by default for diagrams that benefit from readable right-angle connectors.
 - Treat container layout and edge routing as first-class design work, not cleanup after shapes are placed.
 - Prefer fewer bends over decorative routing. If a connector can be made clear with a straight line, do not add a waypoint.
 - Prefer horizontal and vertical connectors over diagonal connectors unless the user explicitly prefers diagonal routing.

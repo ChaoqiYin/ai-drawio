@@ -60,9 +60,9 @@ Do not rely on automatic orthogonal routing alone for dense or compact diagrams;
 Prefer a small number of deliberate bends over many short segments.
 For multi-edge hubs, separate outgoing edges into distinct channels before they descend toward lower layers.
 
-## Validation
+## Validation (content-level, during XML authoring)
 
-For live canvas work, validate geometry after rendering: a successful apply or preview only proves the document renders, not that overlaps are gone.
+For live canvas work, validate geometry after rendering: a successful apply or preview only proves the document renders, not that overlaps are gone. Rendered inspection sign-off is the responsibility of the delivery skill (e.g., `ai-drawio-cli`).
 - Re-check whether any connector now passes through a node area.
 - Re-check whether several edges share one crowded channel directly under or beside a node.
 - If needed, inspect exported SVG paths to confirm where the rendered bends actually land.

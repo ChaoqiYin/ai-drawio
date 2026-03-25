@@ -7,41 +7,86 @@ description: Use when a draw.io, diagram-editing, or canvas-document task should
 
 ## Overview
 
-Use this skill for draw.io work that must go through the installed `ai-drawio` CLI. Treat the live canvas as a delivery surface, not as proof of diagram quality.
+Use this skill for draw.io work that must go through the installed `ai-drawio` CLI.
 
 ## Core Rules
 
-- Resolve the packaged `ai-drawio` executable to an absolute path before running any CLI command.
-- Do not rely on PATH lookup or shell command discovery for `ai-drawio`.
-- If the packaged app is installed in the default macOS location, prefer `/Applications/AI Drawio.app/Contents/MacOS/ai-drawio`.
-- If the default location is unavailable, discover the actual app bundle path first and then keep using the resolved executable path consistently for the rest of the task.
-- Use only the packaged `ai-drawio` executable, not development wrappers such as `npm run cli`.
-- Do not execute any `ai-drawio` terminal command from this skill inside the default sandbox, including `status`, `session *`, and `canvas document.*`.
-- Load `references/command-selection.md` when choosing which CLI command fits the task.
-- Load `references/minimal-path-rule.md` when choosing the command path.
-- Load `references/session-concurrency.md` when more than one session may be involved or command ordering matters.
-- Launch the desktop app itself by executing the resolved packaged app path directly.
-- Every `canvas document.apply` command must include a required prompt argument with the user request summary.
+- All commands executed via `$AI_DRAWIO_BIN` must run with elevated privileges in a non-sandboxed terminal.
 - Do not generate a `.drawio` file unless the user explicitly asked for file output or the XML payload is too large for a safe inline command.
-- If this skill is paired with `drawio-diagramming`, load `references/paired-drawio-diagramming.md` for authoring rules.
-- For multi-page authoring, apply page-specific authoring rules to each page before drafting or routing.
-- For diagram authoring or layout correction, do not treat apply success, preview export, or a visible live canvas as completion. Load `references/connector-verification.md` for rendered inspection and final sign-off.
 - Unless the user explicitly asks to close or quit the app, do not close the desktop app after any CLI command completes.
 
-## Workflow
+## SOP (Standard Operating Procedure)
 
-1. Pick the smallest command sequence that can satisfy both the user's requested output and the applicable completion checks.
-2. Resolve the packaged executable path once and keep using that absolute path for the rest of the task.
-3. Choose the session path: reuse the most recent session from the same AI conversation when continuing that work, require an explicit existing `session-id` when the task names one, or use `session create` when the user needs a new ready session.
-4. If a command returns `APP_NOT_RUNNING`, or an intentional `status` check reports `running: false`, follow the status handling rule and then continue.
-5. Parallelize only across different session IDs. Keep same-session commands strictly serial.
-6. Read XML first only when the edit depends on the current document.
-7. Keep XML in memory by default. Use `--xml-file` only when the XML already exists on disk or an oversized inline payload requires a temporary file.
-8. Determine the completion checks before final inspection: use `drawio-diagramming` when it applies; otherwise use this skill's default completion checks.
-9. If `drawio-diagramming` applies, load `references/paired-drawio-diagramming.md` before drafting XML or reusing existing layout.
-10. For diagram authoring or layout-fix work, load `references/connector-verification.md`, export rendered output with `canvas document.preview` or `canvas document.svg` after apply, and inspect the result against the loaded checks.
-11. If any applicable check fails or remains unchecked, repeat the edit-plus-apply-plus-inspect loop until everything passes or the user explicitly approves an exception.
-12. After the full bounded task is complete, follow `references/session-close.md` when deciding whether the task session should be closed.
+Execute phases strictly in order: Phase 1 → 2 → 3 → 4 → 5. Within each phase, follow steps sequentially.
+
+---
+
+### Phase 1 — Resolve Executable
+
+1.1. Load `references/bundle-executable-discovery.md`.
+1.2. **IF** `/Applications/AI Drawio.app/Contents/MacOS/ai-drawio` exists → store as `$AI_DRAWIO_BIN`.
+1.3. **ELSE** → discover via `mdfind` per the loaded reference → store first valid result as `$AI_DRAWIO_BIN`.
+
+---
+
+### Phase 2 — Session Routing
+
+2.1. **IF** multiple sessions may be involved → load `references/session-concurrency.md`.
+2.2. Determine session-id (first match wins):
+  - Reuse the session from the current AI conversation, **OR**
+  - Use the user-specified session-id (load `references/session-open.md` if readiness check is needed), **OR**
+  - Run `session create` for a new session (load `references/session-create.md`).
+
+---
+
+### Phase 3 — Plan & Execute Commands
+
+#### 3A — Plan
+
+3A.1. Load `references/command-selection.md` and `references/minimal-path-rule.md`.
+3A.2. **IF** task is diagram authoring or layout correction **AND** `drawio-diagramming` skill is available → load `references/paired-drawio-diagramming.md` → build a per-page authoring checklist from its Priority Order.
+3A.3. **IF** the edit depends on existing document content → plan `canvas document.get` as a prerequisite.
+3A.4. Select the minimal command sequence that satisfies both the task and all applicable completion checks.
+
+#### 3B — Execute
+
+3B.1. Before running any command, load its matching reference from the **Progressive Reference Loading** mapping.
+3B.2. **IF** 3A.3 applies → run `canvas document.get <session-id>`. On `APP_NOT_RUNNING` → **GOTO E1**.
+3B.3. Run the target command. On `APP_NOT_RUNNING` → **GOTO E1**.
+3B.4. On success:
+  - **IF** diagram authoring or layout correction → proceed to Phase 4.
+  - **ELSE** → skip to Phase 5.
+
+---
+
+### Phase 4 — Verification Loop (diagram authoring / layout correction only)
+
+4.1. Load `references/connector-verification.md`. **IF** `drawio-diagramming` is paired → use its stricter requirements as the verification standard.
+4.2. Export rendered output via `canvas document.preview` or `canvas document.svg`.
+4.3. Run per-page inspection checks as defined in the loaded verification reference. Escalate to SVG path or XML geometry inspection if PNG is insufficient.
+4.4. **Verdict** (per page):
+  - All checks pass → present per-page checklist in the final response → proceed to Phase 5.
+  - Any check fails or is unchecked → return to **3B.1**, re-apply, then re-enter Phase 4.
+  - User explicitly approves exception → mark exception → proceed to Phase 5.
+
+---
+
+### Phase 5 — Cleanup
+
+5.1. Load `references/session-close.md`.
+5.2. **IF** app is in tray state **AND** user did not request keeping the session → run `session close <session-id>`. **ELSE** → skip.
+
+---
+
+### Exception Subroutine
+
+#### E1 — APP_NOT_RUNNING Recovery
+
+Triggered when any command returns `APP_NOT_RUNNING` or a `status` check reports `running: false`.
+
+E1.1. Load `references/status.md`.
+E1.2. Launch the desktop app by executing the resolved packaged app path directly.
+E1.3. After the app is ready, **return to the originating step** and retry the command.
 
 ## Progressive Reference Loading
 
