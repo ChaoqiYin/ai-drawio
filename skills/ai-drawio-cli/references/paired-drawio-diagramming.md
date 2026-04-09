@@ -21,4 +21,4 @@ Load this only when the task is diagram authoring or layout correction and `draw
 
 ## Inspection Rules
 
-- For rendered inspection or final sign-off, also load `references/connector-verification.md`.
+- For final sign-off, also load `references/connector-verification.md`.

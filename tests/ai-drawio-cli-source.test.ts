@@ -44,36 +44,27 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
     readFile(CLI_SCHEMA_PATH, "utf8")
   ]);
 
-  assert.match(skillSource, /Resolve the packaged `ai-drawio` executable to an absolute path before running any CLI command\./);
-  assert.match(skillSource, /Do not rely on PATH lookup or shell command discovery for `ai-drawio`\./);
-  assert.match(skillSource, /If the packaged app is installed in the default macOS location, prefer `\/Applications\/AI Drawio\.app\/Contents\/MacOS\/ai-drawio`\./);
-  assert.match(skillSource, /If the default location is unavailable, discover the actual app bundle path first and then keep using the resolved executable path consistently for the rest of the task\./);
-  assert.match(skillSource, /Every `canvas document\.apply` command must include a required prompt argument with the user request summary\./);
+  assert.match(skillSource, /All commands executed via `\$AI_DRAWIO_BIN` must run with elevated privileges in a non-sandboxed terminal\./);
+  assert.match(skillSource, /`\/Applications\/AI Drawio\.app\/Contents\/MacOS\/ai-drawio` exists → store as `\$AI_DRAWIO_BIN`\./);
+  assert.match(skillSource, /discover via `mdfind` per the loaded reference → store first valid result as `\$AI_DRAWIO_BIN`\./);
   assert.match(skillSource, /Do not generate a `\.drawio` file unless the user explicitly asked for file output or the XML payload is too large for a safe inline command\./);
-  assert.match(skillSource, /Use `session create` when the user needs a new ready session\./);
+  assert.match(skillSource, /Reuse the session from the current AI conversation/);
+  assert.match(skillSource, /Run `session create` for a new session \(load `references\/session-create\.md`\)\./);
   assert.match(
     skillSource,
-    /If the user is continuing to modify a diagram from the same AI conversation, reuse the most recent session id from that conversation instead of creating a new one\./
+    /Load `references\/command-selection\.md` and `references\/minimal-path-rule\.md`\./
   );
-  assert.match(skillSource, /If this skill opens or creates a session for a bounded task, close that same session with `session close <session-id>` after the full task is complete, unless the user explicitly wants the session kept open\./);
-  assert.match(skillSource, /Do not execute any `ai-drawio` terminal command from this skill inside the default sandbox, including `status`, `session \*`, and `canvas document\.\*`\./);
-  assert.match(skillSource, /Commands for different session IDs may run in parallel\./);
-  assert.match(skillSource, /Commands that target the same session ID must run strictly serially\./);
-  assert.match(skillSource, /Launch the desktop app itself by executing the resolved packaged app path directly\./);
+  assert.match(skillSource, /run `session close <session-id>`\./);
   assert.doesNotMatch(skillSource, /ai-drawio open/);
-  assert.match(skillSource, /`canvas document\.preview <session-id>`: PNG preview export\./);
-  assert.match(skillSource, /If a command returns `APP_NOT_RUNNING`, or `status` returns `running: false`, execute the resolved packaged app path directly outside the sandbox and then continue with the original task\./);
-  assert.doesNotMatch(skillSource, /Tell the user to open the desktop window manually before retrying\./);
   assert.match(skillSource, /`bundle executable discovery` -> `references\/bundle-executable-discovery\.md`/);
   assert.doesNotMatch(skillSource, /launch installed app|references\/open\.md/);
   assert.match(skillSource, /`ai-drawio session create` -> `references\/session-create\.md`/);
   assert.match(skillSource, /`ai-drawio session close` -> `references\/session-close\.md`/);
   assert.match(skillSource, /`ai-drawio canvas document\.preview` -> `references\/canvas-document-preview\.md`/);
-  assert.match(skillSource, /Do not prefer `session list` when another command already satisfies the task\./);
   assert.doesNotMatch(skillSource, /--session|--session-title|--title/);
   assert.doesNotMatch(skillSource, /conversation create/);
   assert.match(statusReferenceSource, /ai-drawio status/);
-  assert.match(statusReferenceSource, /If `running: false`, the skill should follow by executing the resolved packaged app path directly outside the sandbox instead of asking the user to open the app manually\./);
+  assert.match(statusReferenceSource, /If `running: false`, launch the desktop app by executing the resolved packaged app path directly instead of asking the user to open the app manually\./);
   assert.match(discoveryReferenceSource, /Bundle executable discovery/);
   assert.match(discoveryReferenceSource, /\/Applications\/AI Drawio\.app\/Contents\/MacOS\/ai-drawio/);
   assert.match(discoveryReferenceSource, /mdfind/);
@@ -81,7 +72,7 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
   assert.match(previewReferenceSource, /"\$AI_DRAWIO_BIN" canvas document\.preview sess-123/);
   assert.match(closeReferenceSource, /"\$AI_DRAWIO_BIN" session close sess-123/);
   assert.match(closeReferenceSource, /SESSION_NOT_OPEN/);
-  assert.match(closeReferenceSource, /Prefer this command for end-of-task cleanup unless the user explicitly wants the session kept open\./);
+  assert.match(closeReferenceSource, /Prefer this command for end-of-task cleanup only when the current app state is tray state, unless the user explicitly wants the session kept open\./);
   assert.match(previewReferenceSource, /Every preview command must include the target session id as the first positional argument\./);
   assert.match(applyReferenceSource, /The prompt argument is required for every apply command\./);
   assert.match(applyReferenceSource, /Every apply command must include the target session id as the first positional argument\./);
@@ -101,7 +92,7 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
     /If the user is continuing a diagram edit from the same AI conversation, reuse that conversation's most recent session id instead of creating a new session/
   );
   assert.match(agentSource, /If a command returns `APP_NOT_RUNNING`, or `ai-drawio status` reports `running: false`, execute the resolved packaged app path directly outside the sandbox and then continue with the original task instead of asking the user to launch the app manually/);
-  assert.match(agentSource, /After a bounded task is fully complete, close the corresponding task session with `ai-drawio session close <session-id>` unless the user explicitly wants that session kept open\./);
+  assert.match(agentSource, /After a bounded task is fully complete, close the corresponding task session with `ai-drawio session close <session-id>` only when the current app state is tray state, unless the user explicitly wants that session kept open\./);
   assert.match(agentSource, /Use `ai-drawio canvas document\.preview <session-id>` for PNG preview export tasks/);
   assert.doesNotMatch(agentSource, /--session|--session-title|--title/);
   assert.match(schemaSource, /Arg::new\("session-id"\)\s*[\s\S]*\.index\(1\)/);

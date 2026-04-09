@@ -62,10 +62,10 @@ Execute phases strictly in order: Phase 1 → 2 → 3 → 4 → 5. Within each p
 ### Phase 4 — Verification Loop (diagram authoring / layout correction only)
 
 4.1. Load `references/connector-verification.md`. **IF** `drawio-diagramming` is paired → use its stricter requirements as the verification standard.
-4.2. Export rendered output via `canvas document.preview` or `canvas document.svg`.
-4.3. Run per-page inspection checks as defined in the loaded verification reference. Escalate to SVG path or XML geometry inspection if PNG is insufficient.
+4.2. Fetch the current XML via `canvas document.get --output-file` into a system temp path.
+4.3. Run scripted verification checks as defined in the loaded verification reference.
 4.4. **Verdict** (per page):
-  - All checks pass → present per-page checklist in the final response → proceed to Phase 5.
+  - All checks pass → present per-page verification report in the final response → proceed to Phase 5.
   - Any check fails or is unchecked → return to **3B.1**, re-apply, then re-enter Phase 4.
   - User explicitly approves exception → mark exception → proceed to Phase 5.
 

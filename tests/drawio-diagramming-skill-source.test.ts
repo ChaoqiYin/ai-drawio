@@ -18,7 +18,7 @@ test('drawio diagramming skill defaults to non-overlapping shapes and low-crossi
 
   assert.match(
     skillSource,
-    /By default, do not allow ordinary shapes to overlap other ordinary shapes or connector paths\./
+    /Unless the user explicitly says which objects may overlap, treat overlap-free layout as a required layout property rather than a preference\./
   );
   assert.match(
     skillSource,
@@ -30,11 +30,7 @@ test('drawio diagramming skill defaults to non-overlapping shapes and low-crossi
   );
   assert.match(
     skillSource,
-    /Plan layout in layers, columns, and connector channels before finalizing node positions or edge routing\./
-  );
-  assert.match(
-    skillSource,
-    /Do not treat successful XML application or preview rendering as proof that overlap problems are solved\./
+    /For opposing left-to-right flows, favor layered columns and direct center-to-center channels before introducing detours\./
   );
   assert.match(
     agentSource,
