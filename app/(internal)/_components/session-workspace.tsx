@@ -724,6 +724,7 @@ export default function SessionWorkspace({
   const [conversation, setConversation] = useState<ConversationRecord | null>(null);
   const [error, setError] = useState('');
   const [isFrameReady, setIsFrameReady] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [restorePreviewActivePageId, setRestorePreviewActivePageId] = useState('');
   const [restorePreviewDialogOpen, setRestorePreviewDialogOpen] = useState(false);
   const [restorePreviewEntry, setRestorePreviewEntry] = useState<CanvasHistoryEntry | null>(null);
@@ -1496,6 +1497,25 @@ export default function SessionWorkspace({
   const activeRestorePreviewPage = hasRestorePreview
     ? restorePreviewPages.find((page) => page.id === restorePreviewActivePageId) || restorePreviewPages[0] || null
     : null;
+  const sidebarToggleButton = isSidebarCollapsed ? (
+    <Button
+      data-layout="workspace-sidebar-toggle"
+      type="text"
+      size="mini"
+      onClick={() => setIsSidebarCollapsed(false)}
+    >
+      展开
+    </Button>
+  ) : (
+    <Button
+      data-layout="workspace-sidebar-toggle"
+      type="text"
+      size="mini"
+      onClick={() => setIsSidebarCollapsed(true)}
+    >
+      收起
+    </Button>
+  );
 
   if (isRouteRedirecting) {
     return null;
@@ -1505,89 +1525,98 @@ export default function SessionWorkspace({
     <div className={shellClassName}>
       <div className={pageShellClassName}>
         <div className={shellBodyClassName} data-layout="workspace-body">
-          <div className={`${sidebarClassName} w-[320px] shrink-0`} data-layout="workspace-sidebar">
-            <Card
-              className={`internal-panel overflow-hidden ${sidebarSurfaceClassName}`}
-              title="会话记录"
-              style={{ ...toolbarCardStyle, height: '100%' }}
-              bodyStyle={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 14,
-                minHeight: 0,
-                height: 'calc(100% - 57px)',
-                padding: 18,
-              }}
-            >
-              <div className="flex min-h-0 flex-1 flex-col gap-[14px] lg:gap-4">
-                {error ? <Alert type="error" content={error} showIcon /> : null}
-
-                {timelineEntries.length ? (
-                  <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                    <Space direction="vertical" size={10} style={{ display: 'flex' }}>
-                      {timelineEntries.map((entry) =>
-                        entry.entryType === 'message' ? (
-                          (() => {
-                            const linkedCanvasHistoryEntry = findCanvasHistoryEntryForMessage(
-                              entry,
-                              conversation?.canvasHistory ?? [],
-                            );
-
-                            return (
-                              <Card className="internal-message-card" key={entry.id}>
-                                <Space direction="vertical" size={6} style={{ width: '100%', alignItems: 'stretch' }}>
-                                  <Text style={{ fontWeight: 600 }}>{buildTimelineEntryHeading(entry)}</Text>
-                                  <Text type="secondary">{formatDate(entry.createdAt)}</Text>
-                                  <Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
-                                    {buildTimelineEntryBody(entry, conversation?.messages ?? [])}
-                                  </Paragraph>
-                                  {entry.role === 'assistant' && linkedCanvasHistoryEntry ? (
-                                    <Button
-                                      size="small"
-                                      type="primary"
-                                      disabled={!isFrameReady || Boolean(restoringHistoryId)}
-                                      loading={restoringHistoryId === linkedCanvasHistoryEntry.id}
-                                      onClick={() => void openRestorePreview(linkedCanvasHistoryEntry)}
-                                    >
-                                      恢复到此版本
-                                    </Button>
-                                  ) : null}
-                                </Space>
-                              </Card>
-                            );
-                          })()
-                        ) : (
-                          <Card className="internal-message-card" key={entry.id}>
-                            <Space direction="vertical" size={8} style={{ width: '100%', alignItems: 'stretch' }}>
-                              <Text style={{ fontWeight: 600 }}>{buildTimelineEntryHeading(entry)}</Text>
-                              <Text type="secondary">{formatDate(entry.createdAt)}</Text>
-                              <Paragraph type="secondary" style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
-                                {buildTimelineEntryBody(entry, conversation?.messages ?? [])}
-                              </Paragraph>
-                              <Button
-                                size="small"
-                                type="primary"
-                                disabled={!isFrameReady || Boolean(restoringHistoryId)}
-                                loading={restoringHistoryId === entry.id}
-                                onClick={() => void openRestorePreview(entry)}
-                              >
-                                恢复到此版本
-                              </Button>
-                            </Space>
-                          </Card>
-                        ),
-                      )}
-                    </Space>
-                  </div>
-                ) : (
-                  <Empty
-                    description="这条会话还没有消息或画布历史，后续 AI 修改画布后会在这里追加可恢复记录。"
-                    style={{ paddingBlock: 24 }}
-                  />
-                )}
+          {isSidebarCollapsed ? (
+            <div className={`${sidebarClassName} w-[48px] shrink-0`} data-layout="workspace-sidebar">
+              <div className="internal-panel flex h-full items-start justify-center overflow-hidden rounded-[8px] border border-[rgba(148,163,184,0.2)] bg-white/95 px-1 py-3 shadow-[0_20px_52px_rgba(15,23,42,0.08)]">
+                {sidebarToggleButton}
               </div>
-            </Card>
-          </div>
+            </div>
+          ) : (
+            <div className={`${sidebarClassName} w-[320px] shrink-0`} data-layout="workspace-sidebar">
+              <Card
+                className={`internal-panel overflow-hidden ${sidebarSurfaceClassName}`}
+                title="会话记录"
+                extra={sidebarToggleButton}
+                style={{ ...toolbarCardStyle, height: '100%' }}
+                bodyStyle={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 14,
+                  minHeight: 0,
+                  height: 'calc(100% - 57px)',
+                  padding: 18,
+                }}
+              >
+                <div className="flex min-h-0 flex-1 flex-col gap-[14px] lg:gap-4">
+                  {error ? <Alert type="error" content={error} showIcon /> : null}
+
+                  {timelineEntries.length ? (
+                    <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                      <Space direction="vertical" size={10} style={{ display: 'flex' }}>
+                        {timelineEntries.map((entry) =>
+                          entry.entryType === 'message' ? (
+                            (() => {
+                              const linkedCanvasHistoryEntry = findCanvasHistoryEntryForMessage(
+                                entry,
+                                conversation?.canvasHistory ?? [],
+                              );
+
+                              return (
+                                <Card className="internal-message-card" key={entry.id}>
+                                  <Space direction="vertical" size={6} style={{ width: '100%', alignItems: 'stretch' }}>
+                                    <Text style={{ fontWeight: 600 }}>{buildTimelineEntryHeading(entry)}</Text>
+                                    <Text type="secondary">{formatDate(entry.createdAt)}</Text>
+                                    <Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
+                                      {buildTimelineEntryBody(entry, conversation?.messages ?? [])}
+                                    </Paragraph>
+                                    {entry.role === 'assistant' && linkedCanvasHistoryEntry ? (
+                                      <Button
+                                        size="small"
+                                        type="primary"
+                                        disabled={!isFrameReady || Boolean(restoringHistoryId)}
+                                        loading={restoringHistoryId === linkedCanvasHistoryEntry.id}
+                                        onClick={() => void openRestorePreview(linkedCanvasHistoryEntry)}
+                                      >
+                                        恢复到此版本
+                                      </Button>
+                                    ) : null}
+                                  </Space>
+                                </Card>
+                              );
+                            })()
+                          ) : (
+                            <Card className="internal-message-card" key={entry.id}>
+                              <Space direction="vertical" size={8} style={{ width: '100%', alignItems: 'stretch' }}>
+                                <Text style={{ fontWeight: 600 }}>{buildTimelineEntryHeading(entry)}</Text>
+                                <Text type="secondary">{formatDate(entry.createdAt)}</Text>
+                                <Paragraph type="secondary" style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
+                                  {buildTimelineEntryBody(entry, conversation?.messages ?? [])}
+                                </Paragraph>
+                                <Button
+                                  size="small"
+                                  type="primary"
+                                  disabled={!isFrameReady || Boolean(restoringHistoryId)}
+                                  loading={restoringHistoryId === entry.id}
+                                  onClick={() => void openRestorePreview(entry)}
+                                >
+                                  恢复到此版本
+                                </Button>
+                              </Space>
+                            </Card>
+                          ),
+                        )}
+                      </Space>
+                    </div>
+                  ) : (
+                    <Empty
+                      description="这条会话还没有消息或画布历史，后续 AI 修改画布后会在这里追加可恢复记录。"
+                      style={{ paddingBlock: 24 }}
+                    />
+                  )}
+                </div>
+              </Card>
+            </div>
+          )}
 
           <div className={workspaceClassName} data-layout="workspace-main">
             <div className={workspaceCanvasClassName} data-layout="workspace-main-canvas">
