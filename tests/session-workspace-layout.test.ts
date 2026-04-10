@@ -23,19 +23,32 @@ test("session workspace uses a strict desktop flex shell structure", async () =>
   assert.match(source, /toolbarSurfaceClassName/);
   assert.match(source, /sidebarSurfaceClassName/);
   assert.match(source, /const \[isSidebarCollapsed, setIsSidebarCollapsed\] = useState\(false\);/);
+  assert.match(source, /IconLeft/);
+  assert.match(source, /IconRight/);
   assert.match(source, /const toolbarCardStyle = \{[\s\S]*borderRadius: 8,/);
   assert.match(source, /const pageShellClassName = 'flex min-h-0 min-w-0 flex-1 flex-col';/);
   assert.match(source, /min-h-0 min-w-0 flex flex-1 overflow-hidden gap-4 bg-transparent!/);
   assert.match(source, /min-h-0 flex min-w-0 flex-1 flex-col gap-4 lg:gap-\[18px\] bg-transparent!/);
   assert.match(source, /rounded-\[8px\][^"]*border border-\[rgba\(148,163,184,0\.2\)\]/);
   assert.match(source, /w-\[320px\] shrink-0/);
-  assert.match(source, /w-\[48px\] shrink-0/);
+  assert.match(source, /relative w-0 shrink-0 overflow-visible!/);
   assert.match(source, /<div className=\{shellBodyClassName\} data-layout="workspace-body">/);
   assert.match(source, /data-layout="workspace-sidebar"/);
   assert.match(source, /data-layout="workspace-sidebar-toggle"/);
   assert.match(source, /isSidebarCollapsed \?/);
   assert.match(source, /setIsSidebarCollapsed\(true\)/);
   assert.match(source, /setIsSidebarCollapsed\(false\)/);
+  assert.match(
+    source,
+    /icon=\{<IconRight style=\{\{ display: 'block', fontSize: 18, lineHeight: 1 \}\} \/>\}/
+  );
+  assert.match(source, /icon=\{<IconLeft \/>\}/);
+  assert.match(source, /h-\[44px\]!/);
+  assert.match(source, /w-\[24px\]!/);
+  assert.match(source, /items-center!/);
+  assert.match(source, /justify-center!/);
+  assert.match(source, /leading-none!/);
+  assert.match(source, /shadow-\[10px_0_24px_rgba\(15,23,42,0\.22\)\]/);
   assert.match(source, /<div className=\{workspaceClassName\} data-layout="workspace-main">/);
   assert.match(source, /<div className=\{workspaceClassName\} data-layout="workspace-main">[\s\S]*<div className=\{workspaceCanvasClassName\} data-layout="workspace-main-canvas">/);
   assert.match(source, /width: ['"]100%['"],[\s\S]*height: ['"]100%['"]/);
@@ -74,10 +87,12 @@ test("session workspace uses a strict desktop flex shell structure", async () =>
   assert.doesNotMatch(source, /theme="light"/);
   assert.doesNotMatch(source, /theme="dark"/);
   assert.doesNotMatch(source, /extra=\{conversation \? <Text type="secondary">\{conversation\.id\}<\/Text> : null\}/);
+  assert.doesNotMatch(source, /w-\[48px\] shrink-0/);
   assert.match(
     source,
-    /isSidebarCollapsed \? \([\s\S]*w-\[48px\] shrink-0[\s\S]*\) : \([\s\S]*<div className=\{`\$\{sidebarClassName\} w-\[320px\] shrink-0`\} data-layout="workspace-sidebar">/
+    /isSidebarCollapsed \? \([\s\S]*relative w-0 shrink-0 overflow-visible![\s\S]*pointer-events-auto absolute left-0 top-1\/2 z-10 -translate-x-1\/2 -translate-y-1\/2[\s\S]*\) : \([\s\S]*<div className=\{`\$\{sidebarClassName\} w-\[320px\] shrink-0`\} data-layout="workspace-sidebar">/
   );
+  assert.doesNotMatch(source, /pointer-events-none absolute left-0 top-1\/2 z-10 -translate-x-1\/2 -translate-y-1\/2/);
   assert.doesNotMatch(source, /<Text type="secondary" style=\{\{ maxWidth: 420, textAlign: 'right', wordBreak: 'break-all' \}\}>\s*\{DRAWIO_EMBED_PATH\}\s*<\/Text>/);
   assert.doesNotMatch(
     source,

@@ -42,7 +42,20 @@ test("internal pages use rounded buttons and icons for key actions", async () =>
   assert.match(sessionTabsSource, /icon=\{<IconEdit/);
   assert.match(sessionTabsSource, /icon=\{<IconClose/);
   assert.match(sessionTabsSource, /shape="circle"/);
-  assert.doesNotMatch(workspaceSource, /@arco-design\/web-react\/icon/);
+  assert.match(workspaceSource, /@arco-design\/web-react\/icon/);
+  assert.match(
+    workspaceSource,
+    /icon=\{<IconRight style=\{\{ display: 'block', fontSize: 18, lineHeight: 1 \}\} \/>\}/
+  );
+  assert.match(workspaceSource, /icon=\{<IconLeft \/>\}/);
+  assert.match(workspaceSource, /h-\[44px\]!/);
+  assert.match(workspaceSource, /w-\[24px\]!/);
+  assert.match(workspaceSource, /items-center!/);
+  assert.match(workspaceSource, /justify-center!/);
+  assert.match(workspaceSource, /leading-none!/);
+  assert.match(workspaceSource, /shadow-\[10px_0_24px_rgba\(15,23,42,0\.22\)\]/);
+  assert.match(workspaceSource, /fontSize: 18/);
+  assert.match(workspaceSource, /lineHeight: 1/);
   assert.match(topNavSource, /@arco-design\/web-react\/icon/);
   assert.match(topNavSource, /icon=\{<IconLeft/);
 });

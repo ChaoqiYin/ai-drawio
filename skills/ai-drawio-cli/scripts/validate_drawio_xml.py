@@ -61,6 +61,27 @@ def _iter_local(root: ET.Element, name: str) -> Iterable[ET.Element]:
             yield element
 
 
+def _format_float(value: float) -> str:
+    if abs(value - round(value)) < 1e-6:
+        return str(int(round(value)))
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def _format_point(point: Point) -> str:
+    return f"({_format_float(point.x)},{_format_float(point.y)})"
+
+
+def _format_rect(rect: Rect) -> str:
+    return (
+        f"({_format_float(rect.x)},{_format_float(rect.y)},"
+        f"{_format_float(rect.width)},{_format_float(rect.height)})"
+    )
+
+
+def _format_segment(start: Point, end: Point, index: int) -> str:
+    return f"segment[{index}] {_format_point(start)}->{_format_point(end)}"
+
+
 def _b64_decode_maybe_urlencoded(text: str) -> bytes:
     raw = text.strip()
     if not raw:
@@ -145,6 +166,12 @@ class ValidationOptions:
     max_edges_for_pairwise: int = 1500
 
 
+ANCHOR_EPSILON = 1e-6
+GRID_EPSILON = 1e-6
+MIN_ENDPOINT_STRAIGHT_SEGMENT = 20.0
+MIN_NODE_GAP = 60.0
+
+
 def _cell_id(cell: ET.Element) -> Optional[str]:
     return cell.attrib.get("id")
 
@@ -187,6 +214,52 @@ def _as_float(value: Optional[str]) -> Optional[float]:
         return float(value)
     except ValueError:
         return None
+
+
+def _point_for_relative_anchor(rect: Rect, x: float, y: float) -> Point:
+    return Point(rect.x + rect.width * x, rect.y + rect.height * y)
+
+
+def _anchor_side(x: Optional[float], y: Optional[float]) -> Optional[str]:
+    if x is None or y is None:
+        return None
+    if abs(x - 0.0) <= ANCHOR_EPSILON:
+        return "left"
+    if abs(x - 1.0) <= ANCHOR_EPSILON:
+        return "right"
+    if abs(y - 0.0) <= ANCHOR_EPSILON:
+        return "top"
+    if abs(y - 1.0) <= ANCHOR_EPSILON:
+        return "bottom"
+    return None
+
+
+def _boundary_side(rect: Rect, point: Point) -> Optional[str]:
+    if abs(point.x - rect.left) <= ANCHOR_EPSILON:
+        return "left"
+    if abs(point.x - rect.right) <= ANCHOR_EPSILON:
+        return "right"
+    if abs(point.y - rect.top) <= ANCHOR_EPSILON:
+        return "top"
+    if abs(point.y - rect.bottom) <= ANCHOR_EPSILON:
+        return "bottom"
+    return None
+
+
+def _segment_orientation(start: Point, end: Point) -> str:
+    dx = end.x - start.x
+    dy = end.y - start.y
+    if abs(dx) <= ANCHOR_EPSILON and abs(dy) <= ANCHOR_EPSILON:
+        return "point"
+    if abs(dy) <= ANCHOR_EPSILON:
+        return "horizontal"
+    if abs(dx) <= ANCHOR_EPSILON:
+        return "vertical"
+    return "diagonal"
+
+
+def _is_grid_aligned(value: float, grid: float = 10.0) -> bool:
+    return abs(value - round(value / grid) * grid) <= GRID_EPSILON
 
 
 def _rects_overlap(a: Rect, b: Rect) -> bool:
@@ -444,6 +517,18 @@ def _validate_mxgraphmodel(
             continue
         if geometry.attrib.get("width") is None or geometry.attrib.get("height") is None:
             warnings.append(f"Vertex mxCell {cell_id} geometry missing width/height.")
+            continue
+
+        x = _as_float(geometry.attrib.get("x"))
+        y = _as_float(geometry.attrib.get("y"))
+        width = _as_float(geometry.attrib.get("width"))
+        height = _as_float(geometry.attrib.get("height"))
+        grid_values = [value for value in (x, y, width, height) if value is not None]
+
+        if grid_values and not all(_is_grid_aligned(value) for value in grid_values):
+            warnings.append(
+                f"Vertex mxCell {cell_id} is not aligned to a 10px grid for all geometry values."
+            )
 
     # Connector endpoints: edges must have source + target pointing to existing vertices.
     for cell in cells:
@@ -452,9 +537,21 @@ def _validate_mxgraphmodel(
         edge_id = _cell_id(cell) or "<missing-id>"
         source = cell.attrib.get("source")
         target = cell.attrib.get("target")
+        geometry = _find_geometry(cell)
         if not source or not target:
             errors.append(f"Edge mxCell {edge_id} is missing source or target.")
             continue
+        if geometry is None:
+            errors.append(f"Edge mxCell {edge_id} is missing mxGeometry.")
+        else:
+            if geometry.attrib.get("relative") != "1":
+                errors.append(
+                    f"Edge mxCell {edge_id} mxGeometry must set relative=\"1\"."
+                )
+            if geometry.attrib.get("as") != "geometry":
+                errors.append(
+                    f"Edge mxCell {edge_id} mxGeometry must set as=\"geometry\"."
+                )
         if source not in id_to_cell:
             errors.append(f"Edge mxCell {edge_id} source references missing id: {source}.")
         if target not in id_to_cell:
@@ -473,6 +570,19 @@ def _validate_mxgraphmodel(
             style_map = _style_kv(style)
             end_arrow = style_map.get("endArrow")
             start_arrow = style_map.get("startArrow")
+            for key in ("exitX", "exitY", "entryX", "entryY"):
+                if key not in style_map:
+                    continue
+                value = _as_float(style_map.get(key))
+                if value is None:
+                    errors.append(
+                        f"Edge mxCell {edge_id} style {key} must be a number within [0,1]."
+                    )
+                    continue
+                if value < 0.0 or value > 1.0:
+                    errors.append(
+                        f"Edge mxCell {edge_id} style {key} must be within [0,1]."
+                    )
             if not end_arrow or end_arrow.lower() == "none":
                 hint = ""
                 if start_arrow and start_arrow.lower() != "none":
@@ -505,6 +615,21 @@ def _validate_mxgraphmodel(
                         continue
                     if _rects_overlap(a_rect, b_rect):
                         errors.append(f"Vertex overlap detected between {a_id} and {b_id}.")
+                        continue
+
+                    horizontal_gap = max(b_rect.left - a_rect.right, a_rect.left - b_rect.right, 0.0)
+                    vertical_gap = max(b_rect.top - a_rect.bottom, a_rect.top - b_rect.bottom, 0.0)
+                    vertical_overlap = min(a_rect.bottom, b_rect.bottom) - max(a_rect.top, b_rect.top)
+                    horizontal_overlap = min(a_rect.right, b_rect.right) - max(a_rect.left, b_rect.left)
+
+                    if vertical_overlap > 0.0 and 0.0 < horizontal_gap < MIN_NODE_GAP:
+                        warnings.append(
+                            f"Tight horizontal spacing between {a_id} and {b_id}: {horizontal_gap:.2f}px; prefer at least {MIN_NODE_GAP:.0f}px."
+                        )
+                    if horizontal_overlap > 0.0 and 0.0 < vertical_gap < MIN_NODE_GAP:
+                        warnings.append(
+                            f"Tight vertical spacing between {a_id} and {b_id}: {vertical_gap:.2f}px; prefer at least {MIN_NODE_GAP:.0f}px."
+                        )
 
     def edge_polyline(edge_cell: ET.Element) -> Optional[Tuple[str, str, str, List[Point]]]:
         edge_id = _cell_id(edge_cell) or "<missing-id>"
@@ -517,6 +642,11 @@ def _validate_mxgraphmodel(
         if source_rect is None or target_rect is None:
             return None
 
+        style_map = _style_kv(edge_cell.attrib.get("style", ""))
+        exit_x = _as_float(style_map.get("exitX"))
+        exit_y = _as_float(style_map.get("exitY"))
+        entry_x = _as_float(style_map.get("entryX"))
+        entry_y = _as_float(style_map.get("entryY"))
         geometry = _find_geometry(edge_cell)
         points: List[Point] = []
         if geometry is not None:
@@ -546,10 +676,25 @@ def _validate_mxgraphmodel(
         target_center = target_rect.center
         raw = [source_center] + normalized_points + [target_center]
 
-        # Adjust endpoints onto the rectangle boundary to avoid "inside-shape" false positives.
         if len(raw) >= 2:
-            raw[0] = _boundary_point(source_rect, raw[1])
-            raw[-1] = _boundary_point(target_rect, raw[-2])
+            if (
+                exit_x is not None
+                and exit_y is not None
+                and 0.0 <= exit_x <= 1.0
+                and 0.0 <= exit_y <= 1.0
+            ):
+                raw[0] = _point_for_relative_anchor(source_rect, exit_x, exit_y)
+            else:
+                raw[0] = _boundary_point(source_rect, raw[1])
+            if (
+                entry_x is not None
+                and entry_y is not None
+                and 0.0 <= entry_x <= 1.0
+                and 0.0 <= entry_y <= 1.0
+            ):
+                raw[-1] = _point_for_relative_anchor(target_rect, entry_x, entry_y)
+            else:
+                raw[-1] = _boundary_point(target_rect, raw[-2])
 
         # Drop degenerate adjacent segments.
         compact: List[Point] = []
@@ -570,6 +715,69 @@ def _validate_mxgraphmodel(
             continue
         polylines.append(poly)
 
+    for edge_id, source_id, target_id, points in polylines:
+        edge_cell = id_to_cell.get(edge_id)
+        if edge_cell is None or len(points) < 2:
+            continue
+
+        style_map = _style_kv(edge_cell.attrib.get("style", ""))
+        source_rect = vertex_bbox(source_id)
+        target_rect = vertex_bbox(target_id)
+        if source_rect is None or target_rect is None:
+            continue
+
+        first_segment_start = points[0]
+        first_segment_end = points[1]
+        first_segment_index = 0
+        last_segment_start = points[-2]
+        last_segment_end = points[-1]
+        last_segment_index = len(points) - 2
+        first_segment_length = _distance(first_segment_start, first_segment_end)
+        last_segment_length = _distance(last_segment_start, last_segment_end)
+        first_orientation = _segment_orientation(first_segment_start, first_segment_end)
+        last_orientation = _segment_orientation(last_segment_start, last_segment_end)
+
+        if first_segment_length + ANCHOR_EPSILON < MIN_ENDPOINT_STRAIGHT_SEGMENT:
+            errors.append(
+                f"Edge {edge_id} {_format_segment(first_segment_start, first_segment_end, first_segment_index)} "
+                f"length={first_segment_length:.2f} needs at least 20px of straight segment after the source."
+            )
+        if last_segment_length + ANCHOR_EPSILON < MIN_ENDPOINT_STRAIGHT_SEGMENT:
+            errors.append(
+                f"Edge {edge_id} {_format_segment(last_segment_start, last_segment_end, last_segment_index)} "
+                f"length={last_segment_length:.2f} needs at least 20px of straight segment before the target."
+            )
+
+        source_side = _anchor_side(
+            _as_float(style_map.get("exitX")),
+            _as_float(style_map.get("exitY")),
+        ) or _boundary_side(source_rect, first_segment_start)
+        target_side = _anchor_side(
+            _as_float(style_map.get("entryX")),
+            _as_float(style_map.get("entryY")),
+        ) or _boundary_side(target_rect, last_segment_end)
+
+        if source_side in ("left", "right") and first_orientation != "horizontal":
+            errors.append(
+                f"Edge {edge_id} first {_format_segment(first_segment_start, first_segment_end, first_segment_index)} "
+                f"should be horizontal when leaving the source from the {source_side} side."
+            )
+        if source_side in ("top", "bottom") and first_orientation != "vertical":
+            errors.append(
+                f"Edge {edge_id} first {_format_segment(first_segment_start, first_segment_end, first_segment_index)} "
+                f"should be vertical when leaving the source from the {source_side} side."
+            )
+        if target_side in ("left", "right") and last_orientation != "horizontal":
+            errors.append(
+                f"Edge {edge_id} final {_format_segment(last_segment_start, last_segment_end, last_segment_index)} "
+                f"should be horizontal when entering the target from the {target_side} side."
+            )
+        if target_side in ("top", "bottom") and last_orientation != "vertical":
+            errors.append(
+                f"Edge {edge_id} final {_format_segment(last_segment_start, last_segment_end, last_segment_index)} "
+                f"should be vertical when entering the target from the {target_side} side."
+            )
+
     reported_self_issues: set[str] = set()
     for edge_id, _source_id, _target_id, points in polylines:
         if edge_id in reported_self_issues:
@@ -584,7 +792,9 @@ def _validate_mxgraphmodel(
             if _point_on_segment_interior(b, a, c):
                 continue
             errors.append(
-                f"Self-overlap detected on edge {edge_id}: path backtracks along the same segment near waypoint {idx + 1}."
+                f"Self-overlap detected on edge {edge_id}: path backtracks at waypoint[{idx + 1}] "
+                f"{_format_point(b)} between {_format_segment(a, b, idx)} and "
+                f"{_format_segment(b, c, idx + 1)}."
             )
             reported_self_issues.add(edge_id)
             break
@@ -592,28 +802,34 @@ def _validate_mxgraphmodel(
         if edge_id in reported_self_issues:
             continue
 
-        segments = list(zip(points, points[1:]))
+        segments = list(enumerate(zip(points, points[1:])))
         for i in range(len(segments)):
-            p1, p2 = segments[i]
+            p1, p2 = segments[i][1]
             for j in range(i + 2, len(segments)):
-                q1, q2 = segments[j]
+                q1, q2 = segments[j][1]
                 intersects, point, colinear = _segment_intersection_point(p1, p2, q1, q2)
                 if not intersects:
                     continue
                 if colinear:
                     errors.append(
-                        f"Self-overlap detected on edge {edge_id}: non-adjacent segments overlap."
+                        f"Self-overlap detected on edge {edge_id}: "
+                        f"{_format_segment(p1, p2, segments[i][0])} overlaps "
+                        f"{_format_segment(q1, q2, segments[j][0])}."
                     )
                     reported_self_issues.add(edge_id)
                     break
                 if point is None:
                     errors.append(
-                        f"Self-intersection detected on edge {edge_id}."
+                        f"Self-intersection detected on edge {edge_id} between "
+                        f"{_format_segment(p1, p2, segments[i][0])} and "
+                        f"{_format_segment(q1, q2, segments[j][0])}."
                     )
                     reported_self_issues.add(edge_id)
                     break
                 errors.append(
-                    f"Self-intersection detected on edge {edge_id} at ({point.x:.2f},{point.y:.2f})."
+                    f"Self-intersection detected on edge {edge_id} between "
+                    f"{_format_segment(p1, p2, segments[i][0])} and "
+                    f"{_format_segment(q1, q2, segments[j][0])} at ({point.x:.2f},{point.y:.2f})."
                 )
                 reported_self_issues.add(edge_id)
                 break
@@ -634,8 +850,8 @@ def _validate_mxgraphmodel(
                 if _is_vertex(c) and cid not in ("0", "1") and vertex_bbox(cid) is not None
             ]
             for edge_id, source_id, target_id, points in polylines:
-                segments = list(zip(points, points[1:]))
-                for segment_start, segment_end in segments:
+                segments = list(enumerate(zip(points, points[1:])))
+                for segment_index, (segment_start, segment_end) in segments:
                     for vertex_id in vertex_ids:
                         if vertex_id in (source_id, target_id):
                             continue
@@ -651,7 +867,9 @@ def _validate_mxgraphmodel(
                         if _segment_intersects_rect(segment_start, segment_end, rect):
                             # If the segment only touches at the rectangle boundary, this may still be a violation.
                             errors.append(
-                                f"Connector-through-shape: edge {edge_id} intersects vertex {vertex_id}."
+                                f"Connector-through-shape: edge {edge_id} "
+                                f"{_format_segment(segment_start, segment_end, segment_index)} "
+                                f"intersects vertex {vertex_id} rect={_format_rect(rect)}."
                             )
                             reported_through.add(through_key)
                             break
@@ -667,7 +885,7 @@ def _validate_mxgraphmodel(
             reported_pairs: set[tuple[str, str]] = set()
             for i in range(len(polylines)):
                 e1_id, e1_source, e1_target, e1_points = polylines[i]
-                e1_segments = list(zip(e1_points, e1_points[1:]))
+                e1_segments = list(enumerate(zip(e1_points, e1_points[1:])))
                 for j in range(i + 1, len(polylines)):
                     e2_id, e2_source, e2_target, e2_points = polylines[j]
                     pair_key = (e1_id, e2_id) if e1_id < e2_id else (e2_id, e1_id)
@@ -676,9 +894,9 @@ def _validate_mxgraphmodel(
                     # Shared endpoints are allowed.
                     if {e1_source, e1_target} & {e2_source, e2_target}:
                         continue
-                    e2_segments = list(zip(e2_points, e2_points[1:]))
-                    for p1, p2 in e1_segments:
-                        for q1, q2 in e2_segments:
+                    e2_segments = list(enumerate(zip(e2_points, e2_points[1:])))
+                    for e1_segment_index, (p1, p2) in e1_segments:
+                        for e2_segment_index, (q1, q2) in e2_segments:
                             intersects, point, colinear = _segment_intersection_point(
                                 p1, p2, q1, q2
                             )
@@ -686,13 +904,18 @@ def _validate_mxgraphmodel(
                                 continue
                             if colinear:
                                 errors.append(
-                                    f"Shared-channel overlap detected between {e1_id} and {e2_id} (colinear segment overlap)."
+                                    f"Shared-channel overlap detected between "
+                                    f"{e1_id} {_format_segment(p1, p2, e1_segment_index)} and "
+                                    f"{e2_id} {_format_segment(q1, q2, e2_segment_index)} "
+                                    f"(colinear segment overlap)."
                                 )
                                 reported_pairs.add(pair_key)
                                 continue
                             if point is None:
                                 errors.append(
-                                    f"Edge crossing detected between {e1_id} and {e2_id}."
+                                    f"Edge crossing detected between "
+                                    f"{e1_id} {_format_segment(p1, p2, e1_segment_index)} and "
+                                    f"{e2_id} {_format_segment(q1, q2, e2_segment_index)}."
                                 )
                                 reported_pairs.add(pair_key)
                                 continue
@@ -700,7 +923,10 @@ def _validate_mxgraphmodel(
                             if any(_distance(point, endpoint) <= endpoint_eps for endpoint in endpoints):
                                 continue
                             errors.append(
-                                f"Edge crossing detected between {e1_id} and {e2_id} at ({point.x:.2f},{point.y:.2f})."
+                                f"Edge crossing detected between "
+                                f"{e1_id} {_format_segment(p1, p2, e1_segment_index)} and "
+                                f"{e2_id} {_format_segment(q1, q2, e2_segment_index)} "
+                                f"at ({point.x:.2f},{point.y:.2f})."
                             )
                             reported_pairs.add(pair_key)
                             break
@@ -711,17 +937,11 @@ def _validate_mxgraphmodel(
     return cells_total, vertices, edges, errors, warnings
 
 
-def validate_mxfile(
-    xml_path: Path, options: ValidationOptions
+def _validate_root(
+    root: ET.Element, options: ValidationOptions
 ) -> Tuple[List[PageReport], List[str]]:
     document_errors: List[str] = []
 
-    try:
-        tree = ET.parse(xml_path)
-    except ET.ParseError as exc:
-        raise SystemExit(f"ERROR: XML is not well-formed: {exc}") from exc
-
-    root = tree.getroot()
     root_name = _local_name(root.tag)
     if root_name != "mxfile":
         document_errors.append(f"Root element is '{root_name}', expected 'mxfile'.")
@@ -759,6 +979,17 @@ def validate_mxfile(
         )
 
     return reports, document_errors
+
+def validate_mxfile(
+    xml_path: Path, options: ValidationOptions
+) -> Tuple[List[PageReport], List[str]]:
+    try:
+        tree = ET.parse(xml_path)
+    except ET.ParseError as exc:
+        raise SystemExit(f"ERROR: XML is not well-formed: {exc}") from exc
+
+    root = tree.getroot()
+    return _validate_root(root, options)
 
 
 def main(argv: List[str]) -> int:
@@ -806,6 +1037,7 @@ def main(argv: List[str]) -> int:
         check_connector_through_shape=not args.no_through_shape,
         check_edge_crossings=not args.no_crossings,
     )
+
     reports, document_errors = validate_mxfile(args.xml_file, options)
 
     any_errors = bool(document_errors) or any(r.errors for r in reports)

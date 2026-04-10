@@ -43,6 +43,7 @@ This skill is content-only. It does not define task routing, file-output policy,
 - Treat container layout and edge routing as first-class design work, not cleanup after shapes are placed.
 - Prefer fewer bends over decorative routing. If a connector can be made clear with a straight line, do not add a waypoint.
 - Prefer horizontal and vertical connectors over diagonal connectors unless the user explicitly prefers diagonal routing.
+- Do not assume any canvas-side one-click layout or auto-routing feature exists; author the connector geometry you actually need.
 - If only one connector uses a given side of a shape, prefer the center point of that side for the entry or exit.
 - If multiple connectors share one side of a shape, spread them along that side only as much as needed to avoid overlap or ambiguity.
 - When one shape side has a single connector, do not move that connector away from the side center unless doing so avoids a real overlap, crossing, or label collision.

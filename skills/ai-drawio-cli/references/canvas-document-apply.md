@@ -29,8 +29,8 @@ cat /tmp/ai-drawio-next.drawio | "$AI_DRAWIO_BIN" canvas document.apply sess-123
 - The prompt argument is required for every apply command.
 - Every apply command must include the target session id as the first positional argument.
 - Prefer one multi-diagram XML payload over several separate XML payloads when one request includes multiple diagrams.
-- Prefer inline XML when the XML is already in memory and fits safely in one command.
-- Use `--xml-file` only when the XML already exists on disk or an oversized inline payload requires a temporary file under the system temp directory.
+- Prefer `--xml-file` with a temporary file under the system temp directory for agent-generated XML payloads.
+- Use inline XML only when the user explicitly asks for it or the payload is trivially small.
 - Do not create temporary `.drawio` files in the project directory.
 - Use `--xml-stdin` only for actual piped XML.
 - Do not add optional flags unless the request explicitly needs them.

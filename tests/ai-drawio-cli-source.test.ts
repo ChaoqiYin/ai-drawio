@@ -47,7 +47,7 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
   assert.match(skillSource, /All commands executed via `\$AI_DRAWIO_BIN` must run with elevated privileges in a non-sandboxed terminal\./);
   assert.match(skillSource, /`\/Applications\/AI Drawio\.app\/Contents\/MacOS\/ai-drawio` exists → store as `\$AI_DRAWIO_BIN`\./);
   assert.match(skillSource, /discover via `mdfind` per the loaded reference → store first valid result as `\$AI_DRAWIO_BIN`\./);
-  assert.match(skillSource, /Do not generate a `\.drawio` file unless the user explicitly asked for file output or the XML payload is too large for a safe inline command\./);
+  assert.match(skillSource, /Prefer passing XML to `ai-drawio` through a temporary `\.drawio` file under the system temp directory unless the user explicitly asks for inline XML\./);
   assert.match(skillSource, /Reuse the session from the current AI conversation/);
   assert.match(skillSource, /Run `session create` for a new session \(load `references\/session-create\.md`\)\./);
   assert.match(
@@ -76,8 +76,8 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
   assert.match(previewReferenceSource, /Every preview command must include the target session id as the first positional argument\./);
   assert.match(applyReferenceSource, /The prompt argument is required for every apply command\./);
   assert.match(applyReferenceSource, /Every apply command must include the target session id as the first positional argument\./);
-  assert.match(applyReferenceSource, /Prefer inline XML when the XML is already in memory and fits safely in one command\./);
-  assert.match(applyReferenceSource, /Use `--xml-file` only when the XML already exists on disk or an oversized inline payload requires a temporary file under the system temp directory\./);
+  assert.match(applyReferenceSource, /Prefer `--xml-file` with a temporary file under the system temp directory for agent-generated XML payloads\./);
+  assert.match(applyReferenceSource, /Use inline XML only when the user explicitly asks for it or the payload is trivially small\./);
   assert.match(applyReferenceSource, /Do not create temporary `\.drawio` files in the project directory\./);
   assert.match(agentSource, /Always include the required prompt argument when running `ai-drawio canvas document\.apply`/);
   assert.match(agentSource, /Do not execute any `ai-drawio` terminal command from this skill inside the default sandbox/);
@@ -94,6 +94,7 @@ test("ai-drawio cli skill covers the current command surface and session-scoped 
   assert.match(agentSource, /If a command returns `APP_NOT_RUNNING`, or `ai-drawio status` reports `running: false`, execute the resolved packaged app path directly outside the sandbox and then continue with the original task instead of asking the user to launch the app manually/);
   assert.match(agentSource, /After a bounded task is fully complete, close the corresponding task session with `ai-drawio session close <session-id>` only when the current app state is tray state, unless the user explicitly wants that session kept open\./);
   assert.match(agentSource, /Use `ai-drawio canvas document\.preview <session-id>` for PNG preview export tasks/);
+  assert.match(agentSource, /Prefer writing agent-generated XML payloads to a temporary `\.drawio` file under the system temp directory and passing that path with `--xml-file`/);
   assert.doesNotMatch(agentSource, /--session|--session-title|--title/);
   assert.match(schemaSource, /Arg::new\("session-id"\)\s*[\s\S]*\.index\(1\)/);
   assert.match(schemaSource, /Arg::new\("prompt"\)\s*[\s\S]*\.index\(2\)\s*[\s\S]*\.required\(true\)/);

@@ -14,6 +14,7 @@ import {
   Tag,
   Typography,
 } from '@arco-design/web-react';
+import { IconLeft, IconRight } from '@arco-design/web-react/icon';
 
 import {
   buildBrowserFileTitle,
@@ -40,7 +41,7 @@ import {
 } from '../_lib/session-runtime-registry';
 import { useWorkspaceSessionStore } from '../_lib/workspace-session-store';
 
-const DRAWIO_EMBED_PATH = '/drawio/index.html?embed=1&proto=json&spin=1&noSaveBtn=1&noExitBtn=1&saveAndExit=0';
+const DRAWIO_EMBED_PATH = '/drawio/index.html?embed=1&proto=json&spin=1&noSaveBtn=1&noExitBtn=1&saveAndExit=0&lang=zh';
 
 const FALLBACK_EMPTY_DIAGRAM_XML =
   '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel>';
@@ -176,6 +177,16 @@ type DrawioFrameWindow = Window &
       prototype?: EditorUiPrototype;
     };
     StorageFile?: DrawioStorageFileConstructor;
+    mxGeometry?: new () => {
+      clone?: () => unknown;
+      height?: number;
+      points?: Array<{ x: number; y: number }>;
+      relative?: boolean;
+      width?: number;
+      x?: number;
+      y?: number;
+    };
+    mxPoint?: new (x: number, y: number) => { x: number; y: number };
   };
 
 type ShellWindow = Window &
@@ -1502,19 +1513,22 @@ export default function SessionWorkspace({
       data-layout="workspace-sidebar-toggle"
       type="text"
       size="mini"
+      icon={<IconRight style={{ display: 'block', fontSize: 18, lineHeight: 1 }} />}
+      title="展开会话记录"
+      aria-label="展开会话记录"
+      className="flex! h-[44px]! min-h-0! w-[24px]! min-w-0! items-center! justify-center! rounded-[6px]! border border-[rgba(148,163,184,0.16)] bg-white/95 px-0! py-0! leading-none! shadow-[10px_0_24px_rgba(15,23,42,0.22)]"
       onClick={() => setIsSidebarCollapsed(false)}
-    >
-      展开
-    </Button>
+    />
   ) : (
     <Button
       data-layout="workspace-sidebar-toggle"
       type="text"
       size="mini"
+      icon={<IconLeft />}
+      title="收起会话记录"
+      aria-label="收起会话记录"
       onClick={() => setIsSidebarCollapsed(true)}
-    >
-      收起
-    </Button>
+    />
   );
 
   if (isRouteRedirecting) {
@@ -1526,8 +1540,8 @@ export default function SessionWorkspace({
       <div className={pageShellClassName}>
         <div className={shellBodyClassName} data-layout="workspace-body">
           {isSidebarCollapsed ? (
-            <div className={`${sidebarClassName} w-[48px] shrink-0`} data-layout="workspace-sidebar">
-              <div className="internal-panel flex h-full items-start justify-center overflow-hidden rounded-[8px] border border-[rgba(148,163,184,0.2)] bg-white/95 px-1 py-3 shadow-[0_20px_52px_rgba(15,23,42,0.08)]">
+            <div className={`${sidebarClassName} relative w-0 shrink-0 overflow-visible!`} data-layout="workspace-sidebar">
+              <div className="pointer-events-auto absolute left-0 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
                 {sidebarToggleButton}
               </div>
             </div>

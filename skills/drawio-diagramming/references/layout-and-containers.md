@@ -36,15 +36,15 @@ Prefer routing that avoids connector crossings entirely; if a crossing is unavoi
 - Use `exitX` and `exitY` plus `entryX` and `entryY` with values from `0` to `1` to control which side of each node a connector uses.
 - Spread multiple connectors across different sides of a node to avoid overlap.
 - Leave room for arrowheads. Keep at least `20px` of straight segment before the target and after the source.
-- When automatic orthogonal routing places bends too close to shapes, either increase spacing or add explicit waypoints.
+- When default right-angle routing places bends too close to shapes, either increase spacing or add explicit waypoints.
 - Use `rounded=1` on edges for softer bends when the diagram style supports it.
 - Use `jettySize=auto` to improve connector spacing around ports.
 - Align nodes to a grid, usually multiples of `10`.
 
 ## Waypoints
 
-Add explicit waypoints when automatic routing would overlap other connectors or pass too close to shapes.
-Do not rely on automatic orthogonal routing alone for dense or compact diagrams; give critical edges explicit exits, entries, and waypoints.
+Add explicit waypoints when the default route would overlap other connectors or pass too close to shapes.
+Do not depend on any automatic routing pass for dense or compact diagrams; give critical edges explicit exits, entries, and waypoints in the XML you apply.
 
 ```xml
 <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="a" target="b">

@@ -33,12 +33,16 @@ test('drawio diagramming skill defaults to non-overlapping shapes and low-crossi
     /For opposing left-to-right flows, favor layered columns and direct center-to-center channels before introducing detours\./
   );
   assert.match(
+    skillSource,
+    /Do not assume any canvas-side one-click layout or auto-routing feature exists; author the connector geometry you actually need\./
+  );
+  assert.match(
     agentSource,
     /Default to non-overlapping ordinary shapes, keep connectors off shape areas, treat containers as exceptions for child layout, and minimize connector crossings\./
   );
   assert.match(
     agentSource,
-    /For dense diagrams, plan connector channels first and use explicit waypoints for critical edges instead of relying on automatic orthogonal routing\./
+    /For dense diagrams, plan connector channels first and use explicit waypoints for critical edges instead of assuming the app will auto-route them for you\./
   );
   assert.match(
     layoutReferenceSource,
@@ -58,7 +62,7 @@ test('drawio diagramming skill defaults to non-overlapping shapes and low-crossi
   );
   assert.match(
     layoutReferenceSource,
-    /Do not rely on automatic orthogonal routing alone for dense or compact diagrams; give critical edges explicit exits, entries, and waypoints\./
+    /Do not depend on any automatic routing pass for dense or compact diagrams; give critical edges explicit exits, entries, and waypoints in the XML you apply\./
   );
   assert.match(
     layoutReferenceSource,

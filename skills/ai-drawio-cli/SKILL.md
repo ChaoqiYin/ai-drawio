@@ -12,7 +12,7 @@ Use this skill for draw.io work that must go through the installed `ai-drawio` C
 ## Core Rules
 
 - All commands executed via `$AI_DRAWIO_BIN` must run with elevated privileges in a non-sandboxed terminal.
-- Do not generate a `.drawio` file unless the user explicitly asked for file output or the XML payload is too large for a safe inline command.
+- Prefer passing XML to `ai-drawio` through a temporary `.drawio` file under the system temp directory unless the user explicitly asks for inline XML.
 - Unless the user explicitly asks to close or quit the app, do not close the desktop app after any CLI command completes.
 
 ## SOP (Standard Operating Procedure)
